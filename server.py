@@ -78,6 +78,7 @@ DEFAULT_CVARS = [
     "mp_startmoney 99999",
     "mp_autoteambalance 0",
 ]
+RESTART_COMMAND = "mp_restartgame 1"
 
 
 def find_map(map_id_or_name: str) -> dict | None:
@@ -272,22 +273,22 @@ class ServerManager:
                 return self.status()
             try:
                 run_rcon("quit")
+                self._wait_for_exit(timeout=8)
             except Exception:
                 pass
             if self.is_running():
-                self._process.terminate()
-                try:
-                    self._process.wait(timeout=8)
-                except subprocess.TimeoutExpired:
-                    self._process.kill()
+                self._kill_process()
             return self.status()
 
     def change_map(self, map_entry: dict, mode: str) -> str:
         self._last_map = map_entry["id"]
         self._last_mode = mode
         if map_entry.get("workshop"):
-            return run_rcon(f"game_alias {mode} ; host_workshop_map {map_entry['id']}")
-        return run_rcon(f"game_alias {mode} ; map {map_entry['id']}")
+            response = run_rcon(f"game_alias {mode} ; host_workshop_map {map_entry['id']}")
+        else:
+            response = run_rcon(f"game_alias {mode} ; map {map_entry['id']}")
+        self._apply_default_cvars_async()
+        return response
 
     def pause(self, action: str) -> str:
         if action == "pause":
@@ -304,9 +305,20 @@ class ServerManager:
 
     def _apply_default_cvars_async(self) -> None:
         delay = env_int("DEFAULT_CVAR_DELAY", 4)
+        post_delay = env_int("POST_RESTART_CVAR_DELAY", 2)
 
         def worker():
             time.sleep(delay)
+            for command in DEFAULT_CVARS:
+                try:
+                    run_rcon(command)
+                except Exception:
+                    continue
+            try:
+                run_rcon(RESTART_COMMAND)
+            except Exception:
+                return
+            time.sleep(post_delay)
             for command in DEFAULT_CVARS:
                 try:
                     run_rcon(command)
@@ -331,6 +343,37 @@ class ServerManager:
                         self._log_lines = self._log_lines[-800:]
 
         threading.Thread(target=reader, daemon=True).start()
+
+    def _kill_process(self) -> None:
+        proc = self._process
+        if proc is None:
+            return
+        if os.name == "nt":
+            try:
+                subprocess.run(
+                    ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                proc.wait(timeout=5)
+                return
+            except Exception:
+                pass
+        try:
+            proc.kill()
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+
+    def _wait_for_exit(self, timeout: int) -> None:
+        proc = self._process
+        if proc is None:
+            return
+        try:
+            proc.wait(timeout=timeout)
+        except Exception:
+            pass
 
 
 app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
