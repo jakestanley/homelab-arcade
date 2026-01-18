@@ -314,6 +314,7 @@
           <h2>Server Console</h2>
           <div class="controls" style="margin-bottom: 8px">
             <button class="secondary" @click="clearLogs">Clear</button>
+            <button class="secondary" @click="copyLogs" :disabled="logs.length === 0">Copy</button>
             <button @click="refreshLogs">Refresh</button>
           </div>
           <div class="console">
@@ -402,6 +403,29 @@
           },
           clearLogs() {
             this.logs = [];
+          },
+          async copyLogs() {
+            if (this.logs.length === 0) return;
+            this.errorMessage = "";
+            const payload = this.logs.join("\n");
+            try {
+              if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(payload);
+                this.lastResponse = "Server console copied.";
+              } else {
+                const textarea = document.createElement("textarea");
+                textarea.value = payload;
+                textarea.style.position = "fixed";
+                textarea.style.opacity = "0";
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textarea);
+                this.lastResponse = "Server console copied.";
+              }
+            } catch (error) {
+              this.errorMessage = "Copy failed: " + error.message;
+            }
           },
           stageChange() {
             const map = this.maps.find((entry) => entry.id === this.selectedMap);
