@@ -4,6 +4,10 @@ yes,3127729110,de_dust,deathmatch
 yes,3070550406,de_safehouse,deathmatch
 yes,3070547153,ar_monastery,deathmatch
 yes,3070553020,ar_dizzy,deathmatch
+no,ar_shoots,ar_shoots,deathmatch|armsrace
+no,de_overpass,de_overpass,deathmatch|competitive
+no,de_nuke,de_nuke,deathmatch|armsrace
+no,cs_italy,cs_italy,deathmatch|armsrace|competitive
 yes,3089953774,cs_militia,deathmatch
 yes,3138535781,cs_compound,deathmatch
 yes,3070584943,cs_agency,deathmatch|armsrace

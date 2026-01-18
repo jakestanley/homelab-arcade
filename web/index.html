@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CS2 Control Deck</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap");
+
+      :root {
+        --ink: #0b0c10;
+        --text: #141720;
+        --muted: #5b6578;
+        --paper: #f4f2ed;
+        --card: #fef9f2;
+        --accent: #ff6b2d;
+        --accent-2: #0ea5a4;
+        --accent-3: #f5c542;
+        --stroke: rgba(20, 23, 32, 0.15);
+        --shadow: 0 24px 60px rgba(10, 10, 10, 0.15);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "Trebuchet MS", sans-serif;
+        color: var(--text);
+        background: radial-gradient(circle at 10% 10%, #ffe8d9, #f4f2ed 35%, #d7f5f2 90%);
+        min-height: 100vh;
+      }
+
+      .shell {
+        padding: 32px 24px 60px;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 28px;
+        animation: floatIn 0.7s ease-out;
+      }
+
+      h1 {
+        font-size: clamp(28px, 4vw, 42px);
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+
+      .subtitle {
+        color: var(--muted);
+        font-size: 14px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 18px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--stroke);
+        border-radius: 18px;
+        padding: 20px;
+        box-shadow: var(--shadow);
+        animation: floatIn 0.9s ease-out;
+      }
+
+      .card.full-width {
+        grid-column: 1 / -1;
+      }
+
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 600;
+        background: rgba(14, 165, 164, 0.12);
+        color: #0b6d6c;
+      }
+
+      .status-pill.offline {
+        background: rgba(255, 107, 45, 0.12);
+        color: #b9390a;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 12px;
+        font-size: 14px;
+      }
+
+      .status-item span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      button {
+        border: none;
+        border-radius: 12px;
+        padding: 10px 16px;
+        font-family: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        background: var(--ink);
+        color: #fff;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      button.secondary {
+        background: #ffffff;
+        color: var(--text);
+        border: 1px solid var(--stroke);
+      }
+
+      button.accent {
+        background: var(--accent);
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(15, 23, 42, 0.2);
+      }
+
+      select,
+      input[type="text"] {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--stroke);
+        font-family: inherit;
+        font-size: 14px;
+      }
+
+      .select-row {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        margin-bottom: 12px;
+      }
+
+      .pending {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+
+      .command-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      }
+
+      .response {
+        margin-top: 12px;
+        background: rgba(15, 23, 42, 0.08);
+        padding: 12px;
+        border-radius: 12px;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        min-height: 48px;
+      }
+
+      .console {
+        height: 220px;
+        overflow-y: auto;
+        background: #11151d;
+        color: #f5f5f0;
+        border-radius: 14px;
+        padding: 12px;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.4;
+        margin-top: 12px;
+      }
+
+      .error {
+        margin-top: 10px;
+        color: #b9390a;
+        font-size: 13px;
+      }
+
+      @keyframes floatIn {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app" class="shell">
+      <header>
+        <div>
+          <div class="subtitle">Counter-Strike 2 Manager</div>
+          <h1>Control Deck</h1>
+        </div>
+        <div class="status-pill" :class="{ offline: !status.running }">
+          <span>{{ status.running ? "Live" : "Offline" }}</span>
+          <span v-if="status.paused">(Paused)</span>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Server Status</h2>
+          <div class="status-grid">
+            <div class="status-item">
+              <span>Mode</span>
+              {{ status.mode || "-" }}
+            </div>
+            <div class="status-item">
+              <span>Map</span>
+              {{ status.map || "-" }}
+            </div>
+            <div class="status-item">
+              <span>PID</span>
+              {{ status.pid || "-" }}
+            </div>
+          </div>
+          <div class="controls">
+            <button class="accent" @click="startServer" :disabled="status.running">Start Server</button>
+            <button class="secondary" @click="stopServer" :disabled="!status.running">Stop Server</button>
+            <button @click="togglePause" :disabled="!status.running">
+              {{ status.paused ? "Resume" : "Pause" }}
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Map + Mode Change</h2>
+          <div class="select-row">
+            <div>
+              <label>Mode</label>
+              <select v-model="selectedMode">
+                <option v-for="mode in modes" :key="mode" :value="mode">
+                  {{ mode }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label>Map</label>
+              <select v-model="selectedMap">
+                <option v-for="map in filteredMaps" :key="map.id" :value="map.id">
+                  {{ map.name }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <div class="controls">
+            <button class="accent" @click="stageChange">Stage Change</button>
+            <button class="secondary" @click="clearChange" :disabled="!pendingChange">Clear</button>
+            <button @click="confirmChange" :disabled="!pendingChange">Confirm Change</button>
+          </div>
+          <div class="pending" v-if="pendingChange">
+            Pending: {{ pendingChange.mode }} on {{ pendingChange.mapName }}
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Quick Commands</h2>
+          <div class="command-grid">
+            <button v-for="cmd in commandButtons" :key="cmd.label" @click="sendCommand(cmd.command)">
+              {{ cmd.label }}
+            </button>
+          </div>
+          <div class="controls" style="margin-top: 14px">
+            <input v-model="customCommand" type="text" placeholder="Enter any RCON command" />
+            <button class="accent" @click="sendCustom" :disabled="!customCommand.trim()">Send</button>
+          </div>
+          <div class="response">{{ lastResponse || "Awaiting command..." }}</div>
+          <div class="error" v-if="errorMessage">{{ errorMessage }}</div>
+        </div>
+
+        <div class="card full-width">
+          <h2>Server Console</h2>
+          <div class="controls" style="margin-bottom: 8px">
+            <button class="secondary" @click="clearLogs">Clear</button>
+            <button @click="refreshLogs">Refresh</button>
+          </div>
+          <div class="console">
+            <div v-if="logs.length === 0">No output yet.</div>
+            <div v-for="(line, index) in logs" :key="index">{{ line }}</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script>
+      const { createApp } = Vue;
+
+      createApp({
+        data() {
+          return {
+            status: { running: false, paused: false, mode: "", map: "", pid: null },
+            maps: [],
+            modes: [],
+            selectedMode: "",
+            selectedMap: "",
+            pendingChange: null,
+            lastResponse: "",
+            errorMessage: "",
+            customCommand: "",
+            logs: [],
+            commandButtons: [
+              { label: "Bot Balance", command: "bot_balance 1" },
+              { label: "Team Balance", command: "mp_autoteambalance 1" },
+              { label: "End Warmup", command: "mp_warmup_end" },
+              { label: "Restart Game", command: "mp_restartgame 1" },
+            ],
+          };
+        },
+        computed: {
+          filteredMaps() {
+            if (!this.selectedMode) {
+              return this.maps;
+            }
+            return this.maps.filter((map) => map.modes.includes(this.selectedMode));
+          },
+        },
+        methods: {
+          async fetchJson(url, options) {
+            const response = await fetch(url, options);
+            const payload = await response.json();
+            if (!payload.ok) {
+              throw new Error(payload.error || "Request failed");
+            }
+            return payload;
+          },
+          async loadAll() {
+            try {
+              const [maps, modes, config, status] = await Promise.all([
+                this.fetchJson("/api/maps"),
+                this.fetchJson("/api/modes"),
+                this.fetchJson("/api/config"),
+                this.fetchJson("/api/status"),
+              ]);
+              this.maps = maps.maps;
+              this.modes = modes.modes;
+              this.status = status;
+              this.selectedMode = config.default_mode;
+              const defaultMap = this.maps.find((map) => map.id === config.default_map || map.name === config.default_map);
+              this.selectedMap = defaultMap ? defaultMap.id : (this.maps[0] ? this.maps[0].id : "");
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async refreshStatus() {
+            try {
+              const status = await this.fetchJson("/api/status");
+              this.status = status;
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async refreshLogs() {
+            try {
+              const payload = await this.fetchJson("/api/logs");
+              this.logs = payload.lines || [];
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          clearLogs() {
+            this.logs = [];
+          },
+          stageChange() {
+            const map = this.maps.find((entry) => entry.id === this.selectedMap);
+            if (!map) {
+              return;
+            }
+            this.pendingChange = { mode: this.selectedMode, map: map.id, mapName: map.name };
+          },
+          clearChange() {
+            this.pendingChange = null;
+          },
+          async confirmChange() {
+            if (!this.pendingChange) return;
+            this.errorMessage = "";
+            try {
+              const payload = await this.fetchJson("/api/change", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  map_id: this.pendingChange.map,
+                  mode: this.pendingChange.mode,
+                }),
+              });
+              this.lastResponse = payload.response || "Map change sent.";
+              this.pendingChange = null;
+              await this.refreshStatus();
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async startServer() {
+            this.errorMessage = "";
+            try {
+              const payload = await this.fetchJson("/api/start", { method: "POST" });
+              this.status = payload;
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async stopServer() {
+            this.errorMessage = "";
+            try {
+              const payload = await this.fetchJson("/api/stop", { method: "POST" });
+              this.status = payload;
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async togglePause() {
+            this.errorMessage = "";
+            try {
+              const payload = await this.fetchJson("/api/pause", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "toggle" }),
+              });
+              this.status.paused = payload.paused;
+              this.lastResponse = payload.response || "Pause toggled.";
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async sendCommand(command) {
+            this.errorMessage = "";
+            try {
+              const payload = await this.fetchJson("/api/rcon", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ command }),
+              });
+              this.lastResponse = payload.response || "Command sent.";
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async sendCustom() {
+            if (!this.customCommand.trim()) return;
+            await this.sendCommand(this.customCommand.trim());
+            this.customCommand = "";
+          },
+        },
+        mounted() {
+          this.loadAll();
+          setInterval(this.refreshStatus, 3000);
+          setInterval(this.refreshLogs, 4000);
+        },
+      }).mount("#app");
+    </script>
+  </body>
+</html>
