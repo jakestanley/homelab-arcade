@@ -122,6 +122,16 @@
         margin-top: 12px;
       }
 
+      .rcon-controls {
+        flex-wrap: nowrap;
+      }
+
+      .rcon-controls input[type="text"] {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+      }
+
       button {
         border: none;
         border-radius: 12px;
@@ -206,6 +216,32 @@
         font-size: 12px;
         line-height: 1.4;
         margin-top: 12px;
+      }
+
+      .tab-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .tab-button {
+        border: 1px solid var(--stroke);
+        background: #ffffff;
+        color: var(--text);
+      }
+
+      .tab-button.active {
+        background: var(--ink);
+        color: #ffffff;
+        border-color: transparent;
+      }
+
+      .tab-panel {
+        display: none;
+      }
+
+      .tab-panel.active {
+        display: block;
       }
 
       .error {
@@ -312,42 +348,79 @@
               {{ cmd.label }}
             </button>
           </div>
-          <div class="controls" style="margin-top: 14px">
-            <input
-              v-model="customCommand"
-              type="text"
-              placeholder="Enter any RCON command"
-              @keydown.enter.prevent="sendCustom"
-            />
-            <button class="accent" @click="sendCustom" :disabled="!customCommand.trim()">Send</button>
-          </div>
-          <div class="response">{{ lastResponse || "Awaiting command..." }}</div>
-          <div class="error" v-if="errorMessage">{{ errorMessage }}</div>
         </div>
 
         <div class="card full-width">
-          <h2>Server Console</h2>
+          <h2>Consoles</h2>
           <div class="controls" style="margin-bottom: 8px">
-            <button class="secondary" @click="clearLogs">Clear</button>
-            <button class="secondary" @click="copyLogs" :disabled="logs.length === 0">Copy</button>
-            <button @click="refreshLogs">Refresh</button>
+            <div class="tab-row">
+              <button
+                class="tab-button"
+                :class="{ active: activeConsole === 'rcon' }"
+                @click="activeConsole = 'rcon'"
+              >
+                RCON
+              </button>
+              <button
+                class="tab-button"
+                :class="{ active: activeConsole === 'server' }"
+                @click="activeConsole = 'server'"
+              >
+                Server
+              </button>
+              <button
+                class="tab-button"
+                :class="{ active: activeConsole === 'api' }"
+                @click="activeConsole = 'api'"
+              >
+                Flask API
+              </button>
+            </div>
           </div>
-          <div class="console">
-            <div v-if="logs.length === 0">No output yet.</div>
-            <div v-for="(line, index) in logs" :key="index">{{ line }}</div>
-          </div>
-        </div>
 
-        <div class="card full-width">
-          <h2>Flask API Console</h2>
-          <div class="controls" style="margin-bottom: 8px">
-            <button class="secondary" @click="clearApiLogs">Clear</button>
-            <button class="secondary" @click="copyApiLogs" :disabled="apiLogs.length === 0">Copy</button>
-            <button @click="refreshApiLogs">Refresh</button>
+          <div class="tab-panel" :class="{ active: activeConsole === 'rcon' }">
+            <div class="controls" style="margin-bottom: 8px">
+              <button class="secondary" @click="clearRconLogs">Clear</button>
+              <button class="secondary" @click="copyRconLogs" :disabled="rconLogs.length === 0">Copy</button>
+            </div>
+            <div class="console">
+              <div v-if="rconLogs.length === 0">No output yet.</div>
+              <div v-for="(line, index) in rconLogs" :key="index">{{ line }}</div>
+            </div>
+            <div class="controls rcon-controls" style="margin-top: 14px">
+              <input
+                v-model="customCommand"
+                type="text"
+                placeholder="Enter any RCON command"
+                @keydown.enter.prevent="sendCustom"
+              />
+              <button class="accent" @click="sendCustom" :disabled="!customCommand.trim()">Send</button>
+            </div>
+            <div class="error" v-if="errorMessage">{{ errorMessage }}</div>
           </div>
-          <div class="console">
-            <div v-if="apiLogs.length === 0">No output yet.</div>
-            <div v-for="(line, index) in apiLogs" :key="index">{{ line }}</div>
+
+          <div class="tab-panel" :class="{ active: activeConsole === 'server' }">
+            <div class="controls" style="margin-bottom: 8px">
+              <button class="secondary" @click="clearLogs">Clear</button>
+              <button class="secondary" @click="copyLogs" :disabled="logs.length === 0">Copy</button>
+              <button @click="refreshLogs">Refresh</button>
+            </div>
+            <div class="console">
+              <div v-if="logs.length === 0">No output yet.</div>
+              <div v-for="(line, index) in logs" :key="index">{{ line }}</div>
+            </div>
+          </div>
+
+          <div class="tab-panel" :class="{ active: activeConsole === 'api' }">
+            <div class="controls" style="margin-bottom: 8px">
+              <button class="secondary" @click="clearApiLogs">Clear</button>
+              <button class="secondary" @click="copyApiLogs" :disabled="apiLogs.length === 0">Copy</button>
+              <button @click="refreshApiLogs">Refresh</button>
+            </div>
+            <div class="console">
+              <div v-if="apiLogs.length === 0">No output yet.</div>
+              <div v-for="(line, index) in apiLogs" :key="index">{{ line }}</div>
+            </div>
           </div>
         </div>
       </section>
@@ -372,6 +445,8 @@
             extraCvarsEnabled: false,
             apiLogs: [],
             logs: [],
+            rconLogs: [],
+            activeConsole: "rcon",
             commandButtons: [
               { label: "Bot Balance", command: "bot_balance 1" },
               { label: "Team Balance", command: "mp_autoteambalance 1" },
@@ -445,6 +520,9 @@
           clearApiLogs() {
             this.apiLogs = [];
           },
+          clearRconLogs() {
+            this.rconLogs = [];
+          },
           async copyLogs() {
             if (this.logs.length === 0) return;
             this.errorMessage = "";
@@ -489,6 +567,35 @@
               }
             } catch (error) {
               this.errorMessage = "Copy failed: " + error.message;
+            }
+          },
+          async copyRconLogs() {
+            if (this.rconLogs.length === 0) return;
+            this.errorMessage = "";
+            const payload = this.rconLogs.join("\n");
+            try {
+              if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(payload);
+                this.lastResponse = "RCON console copied.";
+              } else {
+                const textarea = document.createElement("textarea");
+                textarea.value = payload;
+                textarea.style.position = "fixed";
+                textarea.style.opacity = "0";
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textarea);
+                this.lastResponse = "RCON console copied.";
+              }
+            } catch (error) {
+              this.errorMessage = "Copy failed: " + error.message;
+            }
+          },
+          appendRconLog(line) {
+            this.rconLogs.push(line);
+            if (this.rconLogs.length > 400) {
+              this.rconLogs = this.rconLogs.slice(-300);
             }
           },
           stageChange() {
@@ -565,8 +672,16 @@
                 body: JSON.stringify({ command }),
               });
               this.lastResponse = payload.response || "Command sent.";
+              this.appendRconLog(`> ${command}`);
+              if (payload.response) {
+                payload.response
+                  .split("\n")
+                  .filter((line) => line.trim().length > 0)
+                  .forEach((line) => this.appendRconLog(line));
+              }
             } catch (error) {
               this.errorMessage = error.message;
+              this.appendRconLog(`! ${error.message}`);
             }
           },
           async sendCustom() {
