@@ -273,11 +273,8 @@ class ServerManager:
                 return self.status()
             try:
                 run_rcon("quit")
-                self._wait_for_exit(timeout=8)
             except Exception:
                 pass
-            if self.is_running():
-                self._kill_process()
             return self.status()
 
     def change_map(self, map_entry: dict, mode: str) -> str:
@@ -343,37 +340,6 @@ class ServerManager:
                         self._log_lines = self._log_lines[-800:]
 
         threading.Thread(target=reader, daemon=True).start()
-
-    def _kill_process(self) -> None:
-        proc = self._process
-        if proc is None:
-            return
-        if os.name == "nt":
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
-                proc.wait(timeout=5)
-                return
-            except Exception:
-                pass
-        try:
-            proc.kill()
-            proc.wait(timeout=5)
-        except Exception:
-            pass
-
-    def _wait_for_exit(self, timeout: int) -> None:
-        proc = self._process
-        if proc is None:
-            return
-        try:
-            proc.wait(timeout=timeout)
-        except Exception:
-            pass
 
 
 app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
