@@ -38,6 +38,49 @@ python server.py
 
 Open `http://localhost:5000` (or `WEB_PORT` if changed).
 
+## Run as a Windows service (NSSM)
+
+Assumes NSSM is installed and on PATH, and the virtual environment lives at `.venv`.
+
+PowerShell (run as Administrator):
+
+```powershell
+.\install-service.ps1
+```
+
+Start/stop/status:
+
+```powershell
+nssm start CS2ControlDeck
+nssm stop CS2ControlDeck
+nssm status CS2ControlDeck
+```
+
+Restart after code changes:
+
+```powershell
+nssm restart CS2ControlDeck
+```
+
+Install script options:
+
+```powershell
+.\install-service.ps1 -ServiceName "CS2ControlDeck" -RepoPath "c:\path\to\cs2" -VenvPath ".venv" -Start
+```
+
+Remove the service:
+
+```powershell
+nssm remove CS2ControlDeck confirm
+```
+
+Notes:
+
+- The server loads `.env` from the repo root automatically.
+- The installer will prompt for credentials so the service runs as your user. For local users, use `.\Username` or `COMPUTERNAME\Username`.
+- Create the `logs` folder if you want log files (NSSM will not create it).
+- Reinstall only if you change the venv path, script path, or NSSM config.
+
 ## Notes
 
 - The server assumes CS2 is already installed at `CS2_PATH`.
