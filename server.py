@@ -163,6 +163,7 @@ class ServerManager:
         self._lock = threading.Lock()
         self._process: subprocess.Popen | None = None
         self._paused = False
+        self._ready = False
         self._last_map = os.environ.get("DEFAULT_MAP", "de_dust2")
         self._last_mode = os.environ.get("DEFAULT_MODE", "competitive")
         self._log_lock = threading.Lock()
@@ -176,6 +177,7 @@ class ServerManager:
             "running": self.is_running(),
             "pid": None if not self.is_running() else self._process.pid,
             "paused": self._paused,
+            "ready": self._ready,
             "map": self._last_map,
             "mode": self._last_mode,
         }
@@ -240,6 +242,7 @@ class ServerManager:
             if self.is_running():
                 app.logger.info("Start requested but server is already running.")
                 return self.status()
+            self._ready = False
             default_map = os.environ.get("DEFAULT_MAP", "de_dust2")
             default_mode = os.environ.get("DEFAULT_MODE", "competitive")
             map_entry = find_map(default_map)
@@ -281,12 +284,14 @@ class ServerManager:
 
     def stop(self) -> dict:
         with self._lock:
+            self._ready = False
             run_rcon("quit")
             return self.status()
 
     def change_map(self, map_entry: dict, mode: str) -> str:
         self._last_map = map_entry["id"]
         self._last_mode = mode
+        self._ready = False
         if map_entry.get("workshop"):
             response = run_rcon(f"game_alias {mode} ; host_workshop_map {map_entry['id']}")
         else:
@@ -333,6 +338,7 @@ class ServerManager:
                 except Exception:
                     app.logger.exception("Failed to apply post-restart cvar: %s", command)
                     continue
+            self._ready = True
             app.logger.info("Post-restart cvars applied; server ready.")
 
         threading.Thread(target=worker, daemon=True).start()

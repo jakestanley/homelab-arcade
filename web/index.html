@@ -255,6 +255,10 @@
               <span>PID</span>
               {{ status.pid || "-" }}
             </div>
+            <div class="status-item">
+              <span>Ready</span>
+              {{ status.running ? (status.ready ? "Yes" : "Not yet") : "-" }}
+            </div>
           </div>
           <div class="controls">
             <button class="accent" @click="startServer" :disabled="status.running">Start Server</button>
@@ -350,7 +354,7 @@
       createApp({
         data() {
           return {
-            status: { running: false, paused: false, mode: "", map: "", pid: null },
+            status: { running: false, paused: false, ready: false, mode: "", map: "", pid: null },
             maps: [],
             modes: [],
             selectedMode: "",
