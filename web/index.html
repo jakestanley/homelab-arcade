@@ -267,6 +267,12 @@
               {{ status.paused ? "Resume" : "Pause" }}
             </button>
           </div>
+          <div style="margin-top: 10px">
+            <label>
+              <input type="checkbox" v-model="extraCvarsEnabled" :disabled="status.running" />
+              Shitcunt mode
+            </label>
+          </div>
         </div>
 
         <div class="card">
@@ -363,6 +369,7 @@
             lastResponse: "",
             errorMessage: "",
             customCommand: "",
+            extraCvarsEnabled: false,
             apiLogs: [],
             logs: [],
             commandButtons: [
@@ -516,7 +523,11 @@
           async startServer() {
             this.errorMessage = "";
             try {
-              const payload = await this.fetchJson("/api/start", { method: "POST" });
+              const payload = await this.fetchJson("/api/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ extra_cvars_enabled: this.extraCvarsEnabled }),
+              });
               this.status = payload;
             } catch (error) {
               this.errorMessage = error.message;

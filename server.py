@@ -74,10 +74,12 @@ def load_maps() -> list[dict]:
 
 MAPS = load_maps()
 DEFAULT_CVARS = [
+    "mp_autoteambalance 0",
+]
+EXTRA_CVARS = [
     "mp_maxmoney 99999",
     "mp_afterroundmoney 99999",
     "mp_startmoney 99999",
-    "mp_autoteambalance 0",
 ]
 RESTART_COMMAND = "mp_restartgame 1"
 
@@ -164,6 +166,7 @@ class ServerManager:
         self._process: subprocess.Popen | None = None
         self._paused = False
         self._ready = False
+        self._extra_cvars_enabled = False
         self._last_map = os.environ.get("DEFAULT_MAP", "de_dust2")
         self._last_mode = os.environ.get("DEFAULT_MODE", "competitive")
         self._log_lock = threading.Lock()
@@ -237,12 +240,14 @@ class ServerManager:
 
         return args
 
-    def start(self) -> dict:
+    def start(self, extra_cvars_enabled: bool | None = None) -> dict:
         with self._lock:
             if self.is_running():
                 app.logger.info("Start requested but server is already running.")
                 return self.status()
             self._ready = False
+            if extra_cvars_enabled is not None:
+                self._extra_cvars_enabled = bool(extra_cvars_enabled)
             default_map = os.environ.get("DEFAULT_MAP", "de_dust2")
             default_mode = os.environ.get("DEFAULT_MODE", "competitive")
             map_entry = find_map(default_map)
@@ -319,7 +324,10 @@ class ServerManager:
         def worker():
             app.logger.info("Applying default cvars.")
             time.sleep(delay)
-            for command in DEFAULT_CVARS:
+            cvars = list(DEFAULT_CVARS)
+            if self._extra_cvars_enabled:
+                cvars.extend(EXTRA_CVARS)
+            for command in cvars:
                 try:
                     run_rcon(command)
                 except Exception:
@@ -332,7 +340,7 @@ class ServerManager:
                 return
             app.logger.info("Applied default cvars and issued restart.")
             time.sleep(post_delay)
-            for command in DEFAULT_CVARS:
+            for command in cvars:
                 try:
                     run_rcon(command)
                 except Exception:
@@ -484,7 +492,9 @@ def api_flask_logs():
 def api_start():
     try:
         app.logger.info("Start requested via API.")
-        return jsonify({"ok": True, **manager.start()})
+        payload = request.get_json(silent=True) or {}
+        extra_cvars_enabled = payload.get("extra_cvars_enabled")
+        return jsonify({"ok": True, **manager.start(extra_cvars_enabled)})
     except Exception as exc:
         app.logger.exception("Start failed: %s", exc)
         return json_error(str(exc), 500)
