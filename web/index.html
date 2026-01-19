@@ -303,7 +303,12 @@
             </button>
           </div>
           <div class="controls" style="margin-top: 14px">
-            <input v-model="customCommand" type="text" placeholder="Enter any RCON command" />
+            <input
+              v-model="customCommand"
+              type="text"
+              placeholder="Enter any RCON command"
+              @keydown.enter.prevent="sendCustom"
+            />
             <button class="accent" @click="sendCustom" :disabled="!customCommand.trim()">Send</button>
           </div>
           <div class="response">{{ lastResponse || "Awaiting command..." }}</div>
