@@ -327,6 +327,19 @@
             <div v-for="(line, index) in logs" :key="index">{{ line }}</div>
           </div>
         </div>
+
+        <div class="card full-width">
+          <h2>Flask API Console</h2>
+          <div class="controls" style="margin-bottom: 8px">
+            <button class="secondary" @click="clearApiLogs">Clear</button>
+            <button class="secondary" @click="copyApiLogs" :disabled="apiLogs.length === 0">Copy</button>
+            <button @click="refreshApiLogs">Refresh</button>
+          </div>
+          <div class="console">
+            <div v-if="apiLogs.length === 0">No output yet.</div>
+            <div v-for="(line, index) in apiLogs" :key="index">{{ line }}</div>
+          </div>
+        </div>
       </section>
     </div>
 
@@ -346,6 +359,7 @@
             lastResponse: "",
             errorMessage: "",
             customCommand: "",
+            apiLogs: [],
             logs: [],
             commandButtons: [
               { label: "Bot Balance", command: "bot_balance 1" },
@@ -406,8 +420,19 @@
               this.errorMessage = error.message;
             }
           },
+          async refreshApiLogs() {
+            try {
+              const payload = await this.fetchJson("/api/flask-logs");
+              this.apiLogs = payload.lines || [];
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
           clearLogs() {
             this.logs = [];
+          },
+          clearApiLogs() {
+            this.apiLogs = [];
           },
           async copyLogs() {
             if (this.logs.length === 0) return;
@@ -427,6 +452,29 @@
                 document.execCommand("copy");
                 document.body.removeChild(textarea);
                 this.lastResponse = "Server console copied.";
+              }
+            } catch (error) {
+              this.errorMessage = "Copy failed: " + error.message;
+            }
+          },
+          async copyApiLogs() {
+            if (this.apiLogs.length === 0) return;
+            this.errorMessage = "";
+            const payload = this.apiLogs.join("\n");
+            try {
+              if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(payload);
+                this.lastResponse = "Flask API console copied.";
+              } else {
+                const textarea = document.createElement("textarea");
+                textarea.value = payload;
+                textarea.style.position = "fixed";
+                textarea.style.opacity = "0";
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textarea);
+                this.lastResponse = "Flask API console copied.";
               }
             } catch (error) {
               this.errorMessage = "Copy failed: " + error.message;
@@ -516,6 +564,7 @@
           this.loadAll();
           setInterval(this.refreshStatus, 3000);
           setInterval(this.refreshLogs, 4000);
+          setInterval(this.refreshApiLogs, 5000);
         },
       }).mount("#app");
     </script>

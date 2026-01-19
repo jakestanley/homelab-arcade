@@ -8,6 +8,7 @@ import time
 import atexit
 import signal
 import sys
+import logging
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -346,6 +347,37 @@ app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
 manager = ServerManager()
 
 
+class ApiLogHandler(logging.Handler):
+    def __init__(self, limit: int = 500) -> None:
+        super().__init__()
+        self._limit = limit
+        self._lock = threading.Lock()
+        self._lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = self.format(record)
+        except Exception:
+            message = record.getMessage()
+        with self._lock:
+            self._lines.append(message)
+            if len(self._lines) > self._limit:
+                self._lines = self._lines[-self._limit :]
+
+    def lines(self, limit: int = 200) -> list[str]:
+        with self._lock:
+            return self._lines[-limit:]
+
+
+api_log_handler = ApiLogHandler(limit=env_int("API_LOG_BUFFER", 500))
+api_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+app.logger.setLevel(logging.INFO)
+app.logger.addHandler(api_log_handler)
+werkzeug_logger = logging.getLogger("werkzeug")
+werkzeug_logger.setLevel(logging.INFO)
+werkzeug_logger.addHandler(api_log_handler)
+
+
 def shutdown_server():
     try:
         manager.stop()
@@ -415,6 +447,16 @@ def api_logs():
     except ValueError:
         pass
     return jsonify({"ok": True, "lines": manager.logs(limit)})
+
+
+@app.get("/api/flask-logs")
+def api_flask_logs():
+    limit = env_int("API_LOG_LIMIT", 200)
+    try:
+        limit = int(request.args.get("limit", limit))
+    except ValueError:
+        pass
+    return jsonify({"ok": True, "lines": api_log_handler.lines(limit)})
 
 
 @app.post("/api/start")
