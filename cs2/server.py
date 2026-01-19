@@ -59,6 +59,19 @@ def env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def detect_primary_ip() -> str:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        pass
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except OSError:
+        return "127.0.0.1"
+
+
 def load_maps() -> list[dict]:
     maps = []
     if not MAPS_FILE.exists():
@@ -118,7 +131,7 @@ def run_rcon(command: str) -> str:
     parts = shlex.split(command)
     if not parts:
         return ""
-    server_ip = os.environ.get("SERVER_IP", "").strip()
+    server_ip = detect_primary_ip()
     hosts = [host]
     if server_ip and server_ip not in hosts:
         hosts.append(server_ip)
@@ -147,7 +160,7 @@ def wait_for_port(host: str, port: int, timeout: int) -> bool:
 
 
 def wait_for_rcon(host: str, port: int, password: str, timeout: int) -> bool:
-    server_ip = os.environ.get("SERVER_IP", "").strip()
+    server_ip = detect_primary_ip()
     hosts = [host]
     if server_ip and server_ip not in hosts:
         hosts.append(server_ip)
@@ -197,7 +210,7 @@ class ServerManager:
         exe = cs2_executable()
         if not exe.exists():
             raise RuntimeError(f"CS2 executable not found at {exe}")
-        server_ip = os.environ.get("SERVER_IP", "0.0.0.0")
+        server_ip = detect_primary_ip()
         game_port = env_int("GAME_PORT", 27015)
         max_players = env_int("MAX_PLAYERS", 64)
         threads = os.environ.get("THREADS", "").strip()
@@ -269,7 +282,7 @@ class ServerManager:
                 bufsize=1,
             )
             self._start_log_stream()
-            server_ip = os.environ.get("SERVER_IP", "127.0.0.1").strip() or "127.0.0.1"
+            server_ip = detect_primary_ip()
             game_port = env_int("GAME_PORT", 27015)
             timeout = env_int("SERVER_STARTUP_TIMEOUT", 20)
             app.logger.info("Waiting for server port %s:%s.", server_ip, game_port)
