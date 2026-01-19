@@ -102,6 +102,23 @@
         color: #b9390a;
       }
 
+      .status-pill.starting {
+        background: rgba(245, 197, 66, 0.18);
+        color: #8a5a00;
+      }
+
+      .status-pill.live {
+        background: rgba(14, 165, 164, 0.12);
+        color: #0b6d6c;
+      }
+
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
       .status-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -269,8 +286,16 @@
           <div class="subtitle">Counter-Strike 2 Manager</div>
           <h1>Control Deck</h1>
         </div>
-        <div class="status-pill" :class="{ offline: !status.running }">
-          <span>{{ status.running ? "Live" : "Offline" }}</span>
+        <div
+          class="status-pill"
+          :class="{
+            offline: !status.running,
+            starting: status.running && !status.ready,
+            live: status.running && status.ready,
+          }"
+        >
+          <span class="status-dot"></span>
+          <span>{{ statusText }}</span>
           <span v-if="status.paused">(Paused)</span>
         </div>
       </header>
@@ -290,10 +315,6 @@
             <div class="status-item">
               <span>PID</span>
               {{ status.pid || "-" }}
-            </div>
-            <div class="status-item">
-              <span>Ready</span>
-              {{ status.running ? (status.ready ? "Yes" : "Not yet") : "-" }}
             </div>
           </div>
           <div class="controls">
@@ -456,6 +477,12 @@
           };
         },
         computed: {
+          statusText() {
+            if (!this.status.running) {
+              return "Offline";
+            }
+            return this.status.ready ? "Live" : "Starting";
+          },
           filteredMaps() {
             if (!this.selectedMode) {
               return this.maps;
