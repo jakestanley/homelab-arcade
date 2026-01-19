@@ -141,14 +141,20 @@ def wait_for_port(host: str, port: int, timeout: int) -> bool:
 
 
 def wait_for_rcon(host: str, port: int, password: str, timeout: int) -> bool:
+    server_ip = os.environ.get("SERVER_IP", "").strip()
+    hosts = [host]
+    if server_ip and server_ip not in hosts:
+        hosts.append(server_ip)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        try:
-            with Client(host, port, passwd=password) as client:
-                client.run("status")
-            return True
-        except Exception:
-            time.sleep(1)
+        for target in hosts:
+            try:
+                with Client(target, port, passwd=password) as client:
+                    client.run("status")
+                return True
+            except Exception:
+                continue
+        time.sleep(1)
     return False
 
 
@@ -232,6 +238,7 @@ class ServerManager:
     def start(self) -> dict:
         with self._lock:
             if self.is_running():
+                app.logger.info("Start requested but server is already running.")
                 return self.status()
             default_map = os.environ.get("DEFAULT_MAP", "de_dust2")
             default_mode = os.environ.get("DEFAULT_MODE", "competitive")
@@ -240,6 +247,7 @@ class ServerManager:
                 raise RuntimeError(f"Unknown map '{default_map}'")
             command = self.build_command(map_entry, default_mode)
             cwd = Path(os.environ.get("CS2_PATH", "")).expanduser()
+            app.logger.info("Starting CS2 server process.")
             self._process = subprocess.Popen(
                 command,
                 cwd=str(cwd),
@@ -252,6 +260,7 @@ class ServerManager:
             server_ip = os.environ.get("SERVER_IP", "127.0.0.1").strip() or "127.0.0.1"
             game_port = env_int("GAME_PORT", 27015)
             timeout = env_int("SERVER_STARTUP_TIMEOUT", 20)
+            app.logger.info("Waiting for server port %s:%s.", server_ip, game_port)
             if not wait_for_port(server_ip, game_port, timeout):
                 self.stop()
                 raise RuntimeError(f"CS2 server did not open {server_ip}:{game_port} within {timeout}s")
@@ -259,12 +268,14 @@ class ServerManager:
             rcon_port = env_int("RCON_PORT", 27015)
             rcon_password = os.environ.get("RCON_PASSWORD", "").strip()
             rcon_timeout = env_int("RCON_STARTUP_TIMEOUT", 10)
+            app.logger.info("Waiting for RCON %s:%s.", rcon_host, rcon_port)
             if not wait_for_rcon(rcon_host, rcon_port, rcon_password, rcon_timeout):
                 self.stop()
                 raise RuntimeError(f"RCON did not respond on {rcon_host}:{rcon_port} within {rcon_timeout}s")
             self._last_map = map_entry["id"]
             self._last_mode = default_mode
             self._paused = False
+            app.logger.info("Server started, scheduling default cvars.")
             self._apply_default_cvars_async()
             return self.status()
 
@@ -301,22 +312,28 @@ class ServerManager:
         post_delay = env_int("POST_RESTART_CVAR_DELAY", 2)
 
         def worker():
+            app.logger.info("Applying default cvars.")
             time.sleep(delay)
             for command in DEFAULT_CVARS:
                 try:
                     run_rcon(command)
                 except Exception:
+                    app.logger.exception("Failed to apply cvar: %s", command)
                     continue
             try:
                 run_rcon(RESTART_COMMAND)
             except Exception:
+                app.logger.exception("Failed to issue restart command.")
                 return
+            app.logger.info("Applied default cvars and issued restart.")
             time.sleep(post_delay)
             for command in DEFAULT_CVARS:
                 try:
                     run_rcon(command)
                 except Exception:
+                    app.logger.exception("Failed to apply post-restart cvar: %s", command)
                     continue
+            app.logger.info("Post-restart cvars applied; server ready.")
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -340,6 +357,7 @@ class ServerManager:
 
 app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
 manager = ServerManager()
+api_logger = logging.getLogger("cs2control")
 
 
 class ApiLogHandler(logging.Handler):
@@ -371,6 +389,8 @@ app.logger.addHandler(api_log_handler)
 werkzeug_logger = logging.getLogger("werkzeug")
 werkzeug_logger.setLevel(logging.INFO)
 werkzeug_logger.addHandler(api_log_handler)
+api_logger.setLevel(logging.INFO)
+api_logger.addHandler(api_log_handler)
 
 
 def shutdown_server():
@@ -457,8 +477,10 @@ def api_flask_logs():
 @app.post("/api/start")
 def api_start():
     try:
+        app.logger.info("Start requested via API.")
         return jsonify({"ok": True, **manager.start()})
     except Exception as exc:
+        app.logger.exception("Start failed: %s", exc)
         return json_error(str(exc), 500)
 
 
