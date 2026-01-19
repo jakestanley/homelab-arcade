@@ -13,21 +13,24 @@
           <div class="subtitle">Server Index</div>
           <h1>Game Server Portal</h1>
         </div>
-        <div class="status-pill live">
-          <span>Live</span>
-        </div>
       </header>
 
       <section class="grid">
         <div class="card">
-          <h2>Counter-Strike 2</h2>
+          <div class="card-header">
+            <h2>Counter-Strike 2</h2>
+            <span class="status-pill starting" id="cs2-status">Starting</span>
+          </div>
           <p class="pending">Primary control UI</p>
           <div class="controls">
             <a class="link-button" id="cs2-link" href="#">Open UI</a>
           </div>
         </div>
         <div class="card">
-          <h2>Dummy Server</h2>
+          <div class="card-header">
+            <h2>Dummy Server</h2>
+            <span class="status-pill starting" id="dummy-status">Starting</span>
+          </div>
           <p class="pending">Example secondary server</p>
           <div class="controls">
             <a class="link-button" id="dummy-link" href="#">Open UI</a>
@@ -39,6 +42,54 @@
       const host = window.location.hostname || "localhost";
       document.getElementById("cs2-link").href = `http://${host}:5000/`;
       document.getElementById("dummy-link").href = `http://${host}:5001/`;
+
+      const setStatus = (el, state, label) => {
+        if (!el) return;
+        el.classList.remove("offline", "starting", "live");
+        el.classList.add(state);
+        el.textContent = label;
+      };
+
+      const ping = (url, timeoutMs = 2000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        return fetch(url, { mode: "no-cors", signal: controller.signal })
+          .then(() => true)
+          .catch(() => false)
+          .finally(() => clearTimeout(timer));
+      };
+
+      const fetchStatus = (url, timeoutMs = 2000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        return fetch(url, { signal: controller.signal })
+          .then((res) => (res.ok ? res.json() : Promise.reject()))
+          .finally(() => clearTimeout(timer));
+      };
+
+      const cs2Status = document.getElementById("cs2-status");
+      const dummyStatus = document.getElementById("dummy-status");
+
+      const refreshStatuses = () => {
+        fetchStatus(`http://${host}:5000/api/status`)
+          .then((status) => {
+            if (!status.running) {
+              setStatus(cs2Status, "offline", "Offline");
+              return;
+            }
+            setStatus(cs2Status, status.ready ? "live" : "starting", status.ready ? "Live" : "Starting");
+          })
+          .catch(() => {
+            setStatus(cs2Status, "offline", "Offline");
+          });
+
+        ping(`http://${host}:5001/`).then((dummyUp) => {
+          setStatus(dummyStatus, dummyUp ? "live" : "offline", dummyUp ? "Live" : "Offline");
+        });
+      };
+
+      refreshStatuses();
+      setInterval(refreshStatuses, 4000);
     </script>
   </body>
 </html>

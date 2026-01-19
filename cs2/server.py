@@ -378,6 +378,12 @@ manager = ServerManager()
 api_logger = logging.getLogger("cs2control")
 
 
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
+
+
 class ApiLogHandler(logging.Handler):
     def __init__(self, limit: int = 500) -> None:
         super().__init__()
