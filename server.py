@@ -270,12 +270,7 @@ class ServerManager:
 
     def stop(self) -> dict:
         with self._lock:
-            if not self.is_running():
-                return self.status()
-            try:
-                run_rcon("quit")
-            except Exception:
-                pass
+            run_rcon("quit")
             return self.status()
 
     def change_map(self, map_entry: dict, mode: str) -> str:
@@ -470,8 +465,11 @@ def api_start():
 @app.post("/api/stop")
 def api_stop():
     try:
-        return jsonify({"ok": True, **manager.stop()})
+        app.logger.info("Stop requested via API.")
+        response = run_rcon("quit")
+        return jsonify({"ok": True, "response": response})
     except Exception as exc:
+        app.logger.exception("Stop failed: %s", exc)
         return json_error(str(exc), 500)
 
 
