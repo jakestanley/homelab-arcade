@@ -89,34 +89,27 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 6px 12px;
+        padding: 10px 18px;
         border-radius: 999px;
-        font-size: 13px;
+        font-size: 15px;
         font-weight: 600;
         background: rgba(14, 165, 164, 0.12);
         color: #0b6d6c;
       }
 
       .status-pill.offline {
-        background: rgba(255, 107, 45, 0.12);
-        color: #b9390a;
+        background: #ef4444;
+        color: #ffffff;
       }
 
       .status-pill.starting {
-        background: rgba(245, 197, 66, 0.18);
-        color: #8a5a00;
+        background: #f59e0b;
+        color: #1f1300;
       }
 
       .status-pill.live {
-        background: rgba(14, 165, 164, 0.12);
-        color: #0b6d6c;
-      }
-
-      .status-dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: currentColor;
+        background: #22c55e;
+        color: #04210f;
       }
 
       .status-grid {
@@ -294,7 +287,6 @@
             live: status.running && status.ready,
           }"
         >
-          <span class="status-dot"></span>
           <span>{{ statusText }}</span>
           <span v-if="status.paused">(Paused)</span>
         </div>
