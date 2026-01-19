@@ -27,14 +27,14 @@ if (-not $Credential) {
 
 $repoFull = (Resolve-Path -Path $RepoPath).Path
 $py = Join-Path $repoFull (Join-Path $VenvPath "Scripts\python.exe")
-$server = Join-Path $repoFull "server.py"
+$server = Join-Path $repoFull "supervisor.py"
 $logsDir = Join-Path $repoFull "logs"
 
 if (-not (Test-Path -Path $py)) {
     throw "Python venv not found at $py"
 }
 if (-not (Test-Path -Path $server)) {
-    throw "server.py not found at $server"
+    throw "Supervisor not found at $server"
 }
 if (-not (Test-Path -Path $logsDir)) {
     New-Item -ItemType Directory -Path $logsDir | Out-Null
@@ -44,6 +44,8 @@ $serviceExists = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if (-not $serviceExists) {
     nssm install $ServiceName $py $server
 }
+nssm set $ServiceName Application $py
+nssm set $ServiceName AppParameters "`"$server`""
 nssm set $ServiceName AppDirectory $repoFull
 nssm set $ServiceName AppStdout (Join-Path $logsDir "cs2-control-deck.out.log")
 nssm set $ServiceName AppStderr (Join-Path $logsDir "cs2-control-deck.err.log")

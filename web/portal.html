@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game Server Portal</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <div>
+          <div class="subtitle">Server Index</div>
+          <h1>Game Server Portal</h1>
+        </div>
+        <div class="status-pill live">
+          <span>Live</span>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Counter-Strike 2</h2>
+          <p class="pending">Primary control UI</p>
+          <div class="controls">
+            <a class="link-button" id="cs2-link" href="#">Open UI</a>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Dummy Server</h2>
+          <p class="pending">Example secondary server</p>
+          <div class="controls">
+            <a class="link-button" id="dummy-link" href="#">Open UI</a>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script>
+      const host = window.location.hostname || "localhost";
+      document.getElementById("cs2-link").href = `http://${host}:5000/`;
+      document.getElementById("dummy-link").href = `http://${host}:5001/`;
+    </script>
+  </body>
+</html>

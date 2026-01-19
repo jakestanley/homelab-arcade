@@ -14,15 +14,19 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from rcon.source import Client
 
+BASE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = BASE_DIR.parent
+WEB_DIR = BASE_DIR / "web"
+SHARED_DIR = ROOT_DIR / "web"
+MAPS_FILE = BASE_DIR / "maps.csv"
+
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
 try:
     from py.modes import MODES
 except Exception:
     MODES = ["deathmatch", "armsrace", "casual", "competitive"]
-
-
-BASE_DIR = Path(__file__).resolve().parent
-WEB_DIR = BASE_DIR / "web"
-MAPS_FILE = BASE_DIR / "maps.csv"
 
 
 def load_env(path: Path) -> None:
@@ -38,7 +42,7 @@ def load_env(path: Path) -> None:
         os.environ.setdefault(key, value)
 
 
-load_env(BASE_DIR / ".env")
+load_env(ROOT_DIR / ".env")
 
 
 def env_int(name: str, default: int) -> int:
@@ -552,6 +556,11 @@ def api_pause():
         return jsonify({"ok": True, "response": response, "paused": manager.status()["paused"]})
     except Exception as exc:
         return json_error(str(exc), 500)
+
+
+@app.get("/shared.css")
+def shared_css():
+    return send_from_directory(str(SHARED_DIR), "shared.css")
 
 
 @app.route("/", methods=["GET", "POST"])

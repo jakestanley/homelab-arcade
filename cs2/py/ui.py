@@ -9,11 +9,12 @@ from py.map import Map
 from py.controller import Controller
 from py.modes import MODES
 
+
 def _ControlPanel() -> QVBoxLayout:
     layout = QVBoxLayout()
 
-
     return layout
+
 
 class MapWidget(QWidget):
     def __init__(self, map: Map, controller: Controller) -> None:
@@ -42,6 +43,7 @@ class MapWidget(QWidget):
         # Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=1234567890
         print(f"Opening workshop page for {self.map.name} ({self.map.id})")
 
+
 class ManagerDialog(QDialog):
     def __init__(self, maps: List[Map], controller: Controller):
         super(ManagerDialog, self).__init__()
@@ -55,7 +57,7 @@ class ManagerDialog(QDialog):
 
         # build the game control panel
         cpanel: QHBoxLayout = self.control_panel()
-        
+
         # build the map list
         self.map_list_widget = QListWidget()
         for map in maps:
@@ -85,7 +87,7 @@ class ManagerDialog(QDialog):
         layout.addWidget(QPushButton("Scramble"))
 
         return layout
-    
+
     def modes_radio(self):
 
         layout = QVBoxLayout()
@@ -95,8 +97,7 @@ class ManagerDialog(QDialog):
             btn: QRadioButton = QRadioButton(mode)
             layout.addWidget(btn)
             button_group.addButton(btn)
-            
+
         button_group.buttonClicked.connect(lambda: print)
 
         return layout
-
