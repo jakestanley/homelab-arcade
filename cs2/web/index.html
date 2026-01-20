@@ -146,6 +146,7 @@
             <div class="controls" style="margin-bottom: 8px">
               <button class="secondary" @click="clearRconLogs">Clear</button>
               <button class="secondary" @click="copyRconLogs" :disabled="rconLogs.length === 0">Copy</button>
+              <button @click="refreshRconLogs">Refresh</button>
             </div>
             <div class="console">
               <div v-if="rconLogs.length === 0">No output yet.</div>
@@ -280,14 +281,37 @@
               this.errorMessage = error.message;
             }
           },
-          clearLogs() {
+          async refreshRconLogs() {
+            try {
+              const payload = await this.fetchJson("/api/rcon-logs");
+              this.rconLogs = payload.lines || [];
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async clearLogs() {
             this.logs = [];
+            try {
+              await this.fetchJson("/api/logs/clear", { method: "POST" });
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
           },
-          clearApiLogs() {
+          async clearApiLogs() {
             this.apiLogs = [];
+            try {
+              await this.fetchJson("/api/flask-logs/clear", { method: "POST" });
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
           },
-          clearRconLogs() {
+          async clearRconLogs() {
             this.rconLogs = [];
+            try {
+              await this.fetchJson("/api/rcon-logs/clear", { method: "POST" });
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
           },
           async copyLogs() {
             if (this.logs.length === 0) return;
@@ -460,7 +484,9 @@
           this.loadAll();
           setInterval(this.refreshStatus, 3000);
           setInterval(this.refreshLogs, 4000);
+          setInterval(this.refreshRconLogs, 4000);
           setInterval(this.refreshApiLogs, 5000);
+          this.refreshRconLogs();
         },
       }).mount("#app");
     </script>

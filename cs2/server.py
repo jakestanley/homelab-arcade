@@ -197,6 +197,10 @@ class ServerManager:
         with self._log_lock:
             return self._log_lines[-limit:]
 
+    def clear_logs(self) -> None:
+        with self._log_lock:
+            self._log_lines = []
+
     def build_command(self, map_entry: dict, mode: str) -> list[str]:
         exe = cs2_executable()
         if not exe.exists():
@@ -387,6 +391,8 @@ class ServerManager:
 app = Flask(__name__, static_folder=str(WEB_DIR), static_url_path="")
 manager = ServerManager()
 api_logger = logging.getLogger("cs2control")
+rcon_log_lock = threading.Lock()
+rcon_log_lines: list[str] = []
 
 
 @app.after_request
@@ -415,6 +421,10 @@ class ApiLogHandler(logging.Handler):
     def lines(self, limit: int = 200) -> list[str]:
         with self._lock:
             return self._lines[-limit:]
+
+    def clear(self) -> None:
+        with self._lock:
+            self._lines = []
 
 
 api_log_handler = ApiLogHandler(limit=env_int("API_LOG_BUFFER", 500))
@@ -463,6 +473,15 @@ def json_error(message: str, status: int = 400):
     return jsonify({"ok": False, "error": message}), status
 
 
+def append_rcon_log(line: str) -> None:
+    if not line:
+        return
+    with rcon_log_lock:
+        rcon_log_lines.append(line)
+        if len(rcon_log_lines) > 1000:
+            rcon_log_lines[:] = rcon_log_lines[-800:]
+
+
 @app.get("/api/status")
 def api_status():
     return jsonify({"ok": True, **manager.status()})
@@ -499,6 +518,12 @@ def api_logs():
     return jsonify({"ok": True, "lines": manager.logs(limit)})
 
 
+@app.post("/api/logs/clear")
+def api_logs_clear():
+    manager.clear_logs()
+    return jsonify({"ok": True})
+
+
 @app.get("/api/flask-logs")
 def api_flask_logs():
     limit = env_int("API_LOG_LIMIT", 200)
@@ -507,6 +532,31 @@ def api_flask_logs():
     except ValueError:
         pass
     return jsonify({"ok": True, "lines": api_log_handler.lines(limit)})
+
+
+@app.post("/api/flask-logs/clear")
+def api_flask_logs_clear():
+    api_log_handler.clear()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/rcon-logs")
+def api_rcon_logs():
+    limit = env_int("LOG_LIMIT", 200)
+    try:
+        limit = int(request.args.get("limit", limit))
+    except ValueError:
+        pass
+    with rcon_log_lock:
+        lines = rcon_log_lines[-limit:]
+    return jsonify({"ok": True, "lines": lines})
+
+
+@app.post("/api/rcon-logs/clear")
+def api_rcon_logs_clear():
+    with rcon_log_lock:
+        rcon_log_lines.clear()
+    return jsonify({"ok": True})
 
 
 @app.post("/api/start")
@@ -558,9 +608,14 @@ def api_rcon():
     if not command:
         return json_error("command is required")
     try:
+        append_rcon_log(f"> {command}")
         response = run_rcon(command)
+        for line in response.split("\n"):
+            if line.strip():
+                append_rcon_log(line)
         return jsonify({"ok": True, "response": response})
     except Exception as exc:
+        append_rcon_log(f"! {exc}")
         return json_error(str(exc), 500)
 
 
