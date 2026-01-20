@@ -317,11 +317,13 @@ class ServerManager:
         self._ready = False
         if not self.is_running():
             return f"staged {map_entry['id']} ({mode})"
+        run_rcon(f"game_alias {mode}")
         if map_entry.get("workshop"):
-            response = run_rcon(f"game_alias {mode} ; host_workshop_map {map_entry['id']}")
+            response = run_rcon(f"host_workshop_map {map_entry['id']}")
         else:
-            response = run_rcon(f"game_alias {mode} ; changelevel {map_entry['id']}")
-        self._apply_default_cvars_async()
+            response = run_rcon(f"changelevel {map_entry['id']}")
+        change_delay = max(env_int("DEFAULT_CVAR_DELAY", 4), 6)
+        self._apply_default_cvars_async(delay_override=change_delay)
         return response
 
     def pause(self, action: str) -> str:
@@ -337,8 +339,8 @@ class ServerManager:
         self._paused = True
         return run_rcon("mp_pause_match")
 
-    def _apply_default_cvars_async(self) -> None:
-        delay = env_int("DEFAULT_CVAR_DELAY", 4)
+    def _apply_default_cvars_async(self, delay_override: int | None = None) -> None:
+        delay = delay_override if delay_override is not None else env_int("DEFAULT_CVAR_DELAY", 4)
         post_delay = env_int("POST_RESTART_CVAR_DELAY", 2)
 
         def worker():
