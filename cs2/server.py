@@ -324,7 +324,7 @@ class ServerManager:
         if map_entry.get("workshop"):
             response = run_rcon(f"game_alias {mode} ; host_workshop_map {map_entry['id']}")
         else:
-            response = run_rcon(f"game_alias {mode} ; map {map_entry['id']}")
+            response = run_rcon(f"game_alias {mode} ; changelevel {map_entry['id']}")
         self._apply_default_cvars_async()
         return response
 
