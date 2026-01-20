@@ -115,6 +115,10 @@
               <input v-model.number="botQuota" type="number" min="1" max="10" />
             </div>
           </div>
+          <label>
+            <input type="checkbox" v-model="botControllable" />
+            Bot Controllable
+          </label>
           <div class="controls">
             <button class="accent" @click="stageBotSettings">Stage</button>
             <button class="secondary" @click="clearBotSettings" :disabled="!pendingBotSettings">Clear</button>
@@ -231,14 +235,13 @@
             extraCvarsEnabled: false,
             botMode: "fill",
             botQuota: 10,
+            botControllable: false,
             pendingBotSettings: null,
             apiLogs: [],
             logs: [],
             rconLogs: [],
             activeConsole: "rcon",
             commandButtons: [
-              { label: "Bot Balance", command: "bot_balance 1" },
-              { label: "Team Balance", command: "mp_autoteambalance 1" },
               { label: "End Warmup", command: "mp_warmup_end" },
               { label: "Restart Game", command: "mp_restartgame 1" },
             ],
@@ -282,6 +285,7 @@
               if (!this.pendingBotSettings) {
                 this.botMode = botSettings.mode;
                 this.botQuota = botSettings.quota;
+                this.botControllable = !!botSettings.controllable;
               }
               this.selectedMode = config.default_mode;
               const defaultMap = this.maps.find((map) => map.id === config.default_map || map.name === config.default_map);
@@ -296,6 +300,7 @@
               if (!this.pendingBotSettings) {
                 this.botMode = payload.mode;
                 this.botQuota = payload.quota;
+                this.botControllable = !!payload.controllable;
               }
             } catch (error) {
               this.errorMessage = error.message;
@@ -449,7 +454,7 @@
               return;
             }
             const mode = this.botMode === "normal" ? "normal" : "fill";
-            this.pendingBotSettings = { mode, quota };
+            this.pendingBotSettings = { mode, quota, controllable: !!this.botControllable };
           },
           clearBotSettings() {
             this.pendingBotSettings = null;
@@ -460,6 +465,7 @@
             try {
               await this.sendCommand(`bot_quota_mode ${this.pendingBotSettings.mode}`);
               await this.sendCommand(`bot_quota ${this.pendingBotSettings.quota}`);
+              await this.sendCommand(`bot_controllable ${this.pendingBotSettings.controllable ? 1 : 0}`);
               this.lastResponse = "Bot settings updated.";
               this.pendingBotSettings = null;
               await this.loadBotSettings();

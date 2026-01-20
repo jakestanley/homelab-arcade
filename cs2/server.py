@@ -507,6 +507,21 @@ def parse_bot_quota_mode(raw: str) -> str | None:
     return None
 
 
+def parse_bot_controllable(raw: str) -> bool | None:
+    match = re.search(r"bot_controllable\s*=\s*(\d+)", raw, re.IGNORECASE)
+    if match:
+        return match.group(1) == "1"
+    match = re.search(r"\b(0|1)\b", raw)
+    if match:
+        return match.group(1) == "1"
+    lower = raw.lower()
+    if "true" in lower:
+        return True
+    if "false" in lower:
+        return False
+    return None
+
+
 @app.get("/api/status")
 def api_status():
     return jsonify({"ok": True, **manager.status()})
@@ -597,13 +612,21 @@ def api_bot_settings():
         for line in mode_raw.split("\n"):
             if line.strip():
                 append_rcon_log(line)
+        append_rcon_log("> bot_controllable")
+        controllable_raw = run_rcon("bot_controllable")
+        for line in controllable_raw.split("\n"):
+            if line.strip():
+                append_rcon_log(line)
         quota = parse_bot_quota(quota_raw)
         mode = parse_bot_quota_mode(mode_raw)
+        controllable = parse_bot_controllable(controllable_raw)
         if quota is None:
             return json_error("Failed to parse bot_quota response.", 500)
         if mode is None:
             return json_error("Failed to parse bot_quota_mode response.", 500)
-        return jsonify({"ok": True, "quota": quota, "mode": mode})
+        if controllable is None:
+            return json_error("Failed to parse bot_controllable response.", 500)
+        return jsonify({"ok": True, "quota": quota, "mode": mode, "controllable": controllable})
     except Exception as exc:
         append_rcon_log(f"! {exc}")
         return json_error(str(exc), 500)
