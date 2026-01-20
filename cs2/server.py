@@ -216,6 +216,7 @@ class ServerManager:
         threads = os.environ.get("THREADS", "").strip()
         workshop_collection = os.environ.get("WORKSHOP_COLLECTION_ID", "").strip()
         rcon_password = os.environ.get("RCON_PASSWORD", "").strip()
+        gslt_token = os.environ.get("GSLT_TOKEN", "").strip()
         if not rcon_password:
             raise RuntimeError("RCON_PASSWORD is not set")
 
@@ -246,6 +247,9 @@ class ServerManager:
         if workshop_collection:
             args.extend(["+host_workshop_collection", workshop_collection])
 
+        if gslt_token:
+            args.extend(["+sv_setsteamaccount", gslt_token])
+
         if map_entry.get("workshop"):
             args.extend(["+host_workshop_map", map_entry["id"]])
         else:
@@ -273,6 +277,7 @@ class ServerManager:
             command = self.build_command(map_entry, default_mode)
             cwd = Path(os.environ.get("CS2_PATH", "")).expanduser()
             app.logger.info("Starting CS2 server process.")
+            app.logger.info("Command: %s", " ".join(command))
             self._process = subprocess.Popen(
                 command,
                 cwd=str(cwd),
