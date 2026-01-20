@@ -61,6 +61,11 @@ The portal and dummy pages reuse shared styles from `web/shared.css`.
 The CS2 server and its assets live under `cs2/`.
 Config files (`.env`, `.env.example`, `requirements.txt`) remain at repo root.
 
+Portal notes:
+
+- Links are LAN-safe (no `localhost`); portal detects the host IP when accessed locally.
+- Each game card shows a status pill (CS2 uses `/api/status`; dummy uses reachability ping).
+
 ## Run as a Windows service (NSSM)
 
 Assumes NSSM is installed and on PATH, and the virtual environment lives at `.venv`.
@@ -101,6 +106,7 @@ Notes:
 
 - The installer runs the supervisor, which starts the portal, CS2 UI, and dummy server together.
 - The CS2 server loads `.env` automatically.
+- `SERVER_IP` is no longer used; the CS2 server auto-detects the host IP.
 - The installer will prompt for credentials so the service runs as your user. For local users, use `.\Username` or `COMPUTERNAME\Username`.
 - Create the `logs` folder if you want log files (NSSM will not create it).
 - Reinstall only if you change the venv path, script path, or NSSM config.
