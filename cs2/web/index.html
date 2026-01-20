@@ -100,6 +100,31 @@
           </div>
         </div>
 
+        <div class="card">
+          <h2>Bot Management</h2>
+          <div class="select-row">
+            <div>
+              <label>Bot Fill Mode</label>
+              <select v-model="botMode">
+                <option value="fill">fill</option>
+                <option value="normal">normal</option>
+              </select>
+            </div>
+            <div>
+              <label>Bot Quota (1-10)</label>
+              <input v-model.number="botQuota" type="number" min="1" max="10" />
+            </div>
+          </div>
+          <div class="controls">
+            <button class="accent" @click="stageBotSettings">Stage</button>
+            <button class="secondary" @click="clearBotSettings" :disabled="!pendingBotSettings">Clear</button>
+            <button @click="confirmBotSettings" :disabled="!pendingBotSettings">Confirm</button>
+          </div>
+          <div class="pending" v-if="pendingBotSettings">
+            Pending: mode {{ pendingBotSettings.mode }}, quota {{ pendingBotSettings.quota }}
+          </div>
+        </div>
+
         <div class="card full-width">
           <h2>RCON Command</h2>
           <div class="controls rcon-controls">
@@ -204,6 +229,9 @@
             errorMessage: "",
             customCommand: "",
             extraCvarsEnabled: false,
+            botMode: "fill",
+            botQuota: 10,
+            pendingBotSettings: null,
             apiLogs: [],
             logs: [],
             rconLogs: [],
@@ -241,18 +269,34 @@
           },
           async loadAll() {
             try {
-              const [maps, modes, config, status] = await Promise.all([
+              const [maps, modes, config, status, botSettings] = await Promise.all([
                 this.fetchJson("/api/maps"),
                 this.fetchJson("/api/modes"),
                 this.fetchJson("/api/config"),
                 this.fetchJson("/api/status"),
+                this.fetchJson("/api/bot-settings"),
               ]);
               this.maps = maps.maps;
               this.modes = modes.modes;
               this.status = status;
+              if (!this.pendingBotSettings) {
+                this.botMode = botSettings.mode;
+                this.botQuota = botSettings.quota;
+              }
               this.selectedMode = config.default_mode;
               const defaultMap = this.maps.find((map) => map.id === config.default_map || map.name === config.default_map);
               this.selectedMap = defaultMap ? defaultMap.id : (this.maps[0] ? this.maps[0].id : "");
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async loadBotSettings() {
+            try {
+              const payload = await this.fetchJson("/api/bot-settings");
+              if (!this.pendingBotSettings) {
+                this.botMode = payload.mode;
+                this.botQuota = payload.quota;
+              }
             } catch (error) {
               this.errorMessage = error.message;
             }
@@ -397,6 +441,31 @@
           },
           clearChange() {
             this.pendingChange = null;
+          },
+          stageBotSettings() {
+            const quota = Number(this.botQuota);
+            if (!Number.isFinite(quota) || quota < 1 || quota > 10) {
+              this.errorMessage = "Bot quota must be between 1 and 10.";
+              return;
+            }
+            const mode = this.botMode === "normal" ? "normal" : "fill";
+            this.pendingBotSettings = { mode, quota };
+          },
+          clearBotSettings() {
+            this.pendingBotSettings = null;
+          },
+          async confirmBotSettings() {
+            if (!this.pendingBotSettings) return;
+            this.errorMessage = "";
+            try {
+              await this.sendCommand(`bot_quota_mode ${this.pendingBotSettings.mode}`);
+              await this.sendCommand(`bot_quota ${this.pendingBotSettings.quota}`);
+              this.lastResponse = "Bot settings updated.";
+              this.pendingBotSettings = null;
+              await this.loadBotSettings();
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
           },
           async confirmChange() {
             if (!this.pendingChange) return;

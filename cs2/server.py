@@ -1,5 +1,6 @@
 import csv
 import os
+import re
 import shlex
 import socket
 import subprocess
@@ -482,6 +483,30 @@ def append_rcon_log(line: str) -> None:
             rcon_log_lines[:] = rcon_log_lines[-800:]
 
 
+def parse_bot_quota(raw: str) -> int | None:
+    match = re.search(r"bot_quota\s*=\s*(\d+)", raw, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"(\d+)", raw)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def parse_bot_quota_mode(raw: str) -> str | None:
+    match = re.search(r"bot_quota_mode\s*=\s*(\w+)", raw, re.IGNORECASE)
+    if match:
+        mode = match.group(1).lower()
+        if mode in {"fill", "normal"}:
+            return mode
+    lower = raw.lower()
+    if "fill" in lower:
+        return "fill"
+    if "normal" in lower:
+        return "normal"
+    return None
+
+
 @app.get("/api/status")
 def api_status():
     return jsonify({"ok": True, **manager.status()})
@@ -557,6 +582,31 @@ def api_rcon_logs_clear():
     with rcon_log_lock:
         rcon_log_lines.clear()
     return jsonify({"ok": True})
+
+
+@app.get("/api/bot-settings")
+def api_bot_settings():
+    try:
+        append_rcon_log("> bot_quota")
+        quota_raw = run_rcon("bot_quota")
+        for line in quota_raw.split("\n"):
+            if line.strip():
+                append_rcon_log(line)
+        append_rcon_log("> bot_quota_mode")
+        mode_raw = run_rcon("bot_quota_mode")
+        for line in mode_raw.split("\n"):
+            if line.strip():
+                append_rcon_log(line)
+        quota = parse_bot_quota(quota_raw)
+        mode = parse_bot_quota_mode(mode_raw)
+        if quota is None:
+            return json_error("Failed to parse bot_quota response.", 500)
+        if mode is None:
+            return json_error("Failed to parse bot_quota_mode response.", 500)
+        return jsonify({"ok": True, "quota": quota, "mode": mode})
+    except Exception as exc:
+        append_rcon_log(f"! {exc}")
+        return json_error(str(exc), 500)
 
 
 @app.post("/api/start")
