@@ -101,6 +101,20 @@
         </div>
 
         <div class="card full-width">
+          <h2>RCON Command</h2>
+          <div class="controls rcon-controls">
+            <input
+              v-model="customCommand"
+              type="text"
+              placeholder="Enter any RCON command"
+              @keydown.enter.prevent="sendCustom"
+            />
+            <button class="accent" @click="sendCustom" :disabled="!customCommand.trim()">Send</button>
+          </div>
+          <div class="error" v-if="errorMessage">{{ errorMessage }}</div>
+        </div>
+
+        <div class="card full-width">
           <h2>Consoles</h2>
           <div class="controls" style="margin-bottom: 8px">
             <div class="tab-row">
@@ -137,16 +151,6 @@
               <div v-if="rconLogs.length === 0">No output yet.</div>
               <div v-for="(line, index) in rconLogs" :key="index">{{ line }}</div>
             </div>
-            <div class="controls rcon-controls" style="margin-top: 14px">
-              <input
-                v-model="customCommand"
-                type="text"
-                placeholder="Enter any RCON command"
-                @keydown.enter.prevent="sendCustom"
-              />
-              <button class="accent" @click="sendCustom" :disabled="!customCommand.trim()">Send</button>
-            </div>
-            <div class="error" v-if="errorMessage">{{ errorMessage }}</div>
           </div>
 
           <div class="tab-panel" :class="{ active: activeConsole === 'server' }">

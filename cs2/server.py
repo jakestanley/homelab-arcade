@@ -265,8 +265,8 @@ class ServerManager:
             self._ready = False
             if extra_cvars_enabled is not None:
                 self._extra_cvars_enabled = bool(extra_cvars_enabled)
-            default_map = os.environ.get("DEFAULT_MAP", "de_dust2")
-            default_mode = os.environ.get("DEFAULT_MODE", "competitive")
+            default_map = self._last_map or os.environ.get("DEFAULT_MAP", "de_dust2")
+            default_mode = self._last_mode or os.environ.get("DEFAULT_MODE", "competitive")
             map_entry = find_map(default_map)
             if map_entry is None:
                 raise RuntimeError(f"Unknown map '{default_map}'")
@@ -314,6 +314,8 @@ class ServerManager:
         self._last_map = map_entry["id"]
         self._last_mode = mode
         self._ready = False
+        if not self.is_running():
+            return f"staged {map_entry['id']} ({mode})"
         if map_entry.get("workshop"):
             response = run_rcon(f"game_alias {mode} ; host_workshop_map {map_entry['id']}")
         else:
