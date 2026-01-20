@@ -5,12 +5,15 @@ import sys
 import time
 from pathlib import Path
 
+from cs2.config import DEFAULT_CONFIG_PATH, load_config
+
 
 def start_process(args, env=None, cwd=None):
     return subprocess.Popen(args, env=env, cwd=cwd)
 
 
 def main() -> None:
+    load_config(DEFAULT_CONFIG_PATH, game="cs2")
     root = Path(__file__).resolve().parent
     python = sys.executable
 

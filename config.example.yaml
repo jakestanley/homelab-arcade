@@ -1,0 +1,26 @@
+portal_port: 80
+dummy_port: 5001
+
+cs2:
+  cs2_path: "C:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive"
+  rcon_host: 127.0.0.1
+  rcon_port: 27015
+  rcon_password: changeme
+  game_port: 27015
+  max_players: 64
+  threads: 4
+  high_priority: true
+  default_mode: competitive
+  default_map: de_dust2
+  default_cvar_delay: 4
+  post_restart_cvar_delay: 2
+  server_startup_timeout: 20
+  rcon_startup_timeout: 10
+  workshop_collection_id: ""
+  extra_args: ""
+  gslt_token: ""
+  web_port: 5000
+  log_limit: 200
+  api_log_limit: 200
+  api_log_buffer: 500
+  shutdown_timeout: 8

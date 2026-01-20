@@ -3,6 +3,8 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from cs2.config import DEFAULT_CONFIG_PATH, load_config
+
 
 class RootRewriteHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, directory=None, default_file="dummy.html", **kwargs):
@@ -16,6 +18,7 @@ class RootRewriteHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
+    load_config(DEFAULT_CONFIG_PATH)
     web_dir = Path(__file__).resolve().parent / "web"
     port = int(os.environ.get("DUMMY_PORT", "5001"))
     handler = partial(RootRewriteHandler, directory=str(web_dir), default_file="dummy.html")

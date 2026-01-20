@@ -3,3 +3,6 @@ __pycache__/
 *.zip
 .env
 .venv
+logs
+*.backup
+config.yaml

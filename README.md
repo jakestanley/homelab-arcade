@@ -25,10 +25,10 @@ pip install -r requirements.txt
 3) Configure environment
 
 ```bash
-copy .env.example .env
+copy config.example.yaml config.yaml
 ```
 
-Edit `.env` and set `CS2_PATH` and `RCON_PASSWORD` at minimum. If your path has spaces, wrap it in quotes (see `.env.example`).
+Edit `config.yaml` and set `cs2.cs2_path` and `cs2.rcon_password` at minimum. If your path has spaces, wrap it in quotes (see `config.example.yaml`).
 
 ## Run
 
@@ -59,7 +59,7 @@ This repo includes simple additional servers and a portal page. The portal is se
 
 The portal and dummy pages reuse shared styles from `web/shared.css`.
 The CS2 server and its assets live under `cs2/`.
-Config files (`.env`, `.env.example`, `requirements.txt`) remain at repo root.
+Config files (`config.yaml`, `config.example.yaml`, `.env`, `.env.example`, `requirements.txt`) remain at repo root.
 
 Portal notes:
 
@@ -105,7 +105,7 @@ nssm remove CS2ControlDeck confirm
 Notes:
 
 - The installer runs the supervisor, which starts the portal, CS2 UI, and dummy server together.
-- The CS2 server loads `.env` automatically.
+- The CS2 server loads `config.yaml` automatically.
 - `SERVER_IP` is no longer used; the CS2 server auto-detects the host IP.
 - The installer will prompt for credentials so the service runs as your user. For local users, use `.\Username` or `COMPUTERNAME\Username`.
 - Create the `logs` folder if you want log files (NSSM will not create it).
@@ -114,5 +114,5 @@ Notes:
 ## Notes
 
 - The server assumes CS2 is already installed at `CS2_PATH`.
-- Default mode/map: competitive on de_dust2 (override via `.env`).
+- Default mode/map: competitive on de_dust2 (override via `config.yaml`).
 - The web UI can send RCON commands, including a custom command input.

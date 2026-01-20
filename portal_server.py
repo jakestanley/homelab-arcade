@@ -5,6 +5,8 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from cs2.config import DEFAULT_CONFIG_PATH, load_config
+
 
 def detect_primary_ip() -> str:
     try:
@@ -40,6 +42,7 @@ class RootRewriteHandler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
+    load_config(DEFAULT_CONFIG_PATH)
     web_dir = Path(__file__).resolve().parent / "web"
     port = int(os.environ.get("PORTAL_PORT", "80"))
     handler = partial(RootRewriteHandler, directory=str(web_dir), default_file="portal.html")

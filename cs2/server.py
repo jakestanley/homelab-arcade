@@ -28,21 +28,10 @@ try:
 except Exception:
     MODES = ["deathmatch", "armsrace", "casual", "competitive"]
 
-
-def load_env(path: Path) -> None:
-    if not path.exists():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip("'\"")
-        os.environ.setdefault(key, value)
+from config import DEFAULT_CONFIG_PATH, load_config
 
 
-load_env(ROOT_DIR / ".env")
+load_config(DEFAULT_CONFIG_PATH, game="cs2")
 
 
 def env_int(name: str, default: int) -> int:
@@ -92,6 +81,8 @@ def load_maps() -> list[dict]:
 MAPS = load_maps()
 DEFAULT_CVARS = [
     "mp_autoteambalance 0",
+    "mp_autokick 0",
+    "mp_tkpunish 0"
 ]
 EXTRA_CVARS = [
     "mp_maxmoney 99999",
