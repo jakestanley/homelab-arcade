@@ -22,6 +22,7 @@ def main() -> None:
 
     dummy_env = os.environ.copy()
     dummy_env.setdefault("DUMMY_PORT", "5001")
+    dummy_env.setdefault("PORTAL_PORT", portal_env["PORTAL_PORT"])
 
     cs2_env = os.environ.copy()
     cs2_env.setdefault("WEB_PORT", "5000")

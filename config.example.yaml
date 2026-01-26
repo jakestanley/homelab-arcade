@@ -1,5 +1,19 @@
-portal_port: 80
+portal_port: 20032
 dummy_port: 5001
+
+variants:
+  - id: cs2
+    display_name: Counter-Strike 2
+    description: Primary control UI
+    port_env: WEB_PORT
+    status_path: /api/status
+    ui_path: /
+  - id: dummy
+    display_name: Dummy Server
+    description: Example secondary server
+    port_env: DUMMY_PORT
+    status_path: /api/status
+    ui_path: /
 
 cs2:
   cs2_path: "C:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive"

@@ -1,3 +1,4 @@
+import json
 import os
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -12,7 +13,27 @@ class RootRewriteHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=directory, **kwargs)
 
     def do_GET(self):
-        if self.path in {"", "/"}:
+        path = self.path.split("?", 1)[0]
+        if path == "/api/status":
+            payload = {"running": True, "ready": True}
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/api/portal":
+            port = int(os.environ.get("PORTAL_PORT", "80"))
+            payload = {"port": port}
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path in {"", "/"}:
             self.path = f"/{self._default_file}"
         return super().do_GET()
 

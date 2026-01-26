@@ -48,10 +48,29 @@
             This is a dummy game server page to demonstrate shared UI components and layout.
           </p>
           <div class="controls">
-            <a class="link-button" href="http://localhost:80/">Back to portal</a>
+            <a class="link-button" id="portal-link" href="#">Back to portal</a>
           </div>
         </div>
       </section>
     </div>
+    <script>
+      const portalLink = document.getElementById("portal-link");
+      const host = window.location.hostname;
+
+      const buildUrl = (port) => {
+        const portValue = Number(port) || 80;
+        const portSuffix = portValue !== 80 ? `:${portValue}` : "";
+        return `http://${host}${portSuffix}/`;
+      };
+
+      fetch("/api/portal")
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data) => {
+          portalLink.href = buildUrl(data.port);
+        })
+        .catch(() => {
+          portalLink.href = buildUrl(80);
+        });
+    </script>
   </body>
 </html>

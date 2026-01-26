@@ -15,81 +15,108 @@
         </div>
       </header>
 
-      <section class="grid">
-        <div class="card">
-          <div class="card-header">
-            <h2>Counter-Strike 2</h2>
-            <span class="status-pill starting" id="cs2-status">Starting</span>
-          </div>
-          <p class="pending">Primary control UI</p>
-          <div class="controls">
-            <a class="link-button" id="cs2-link" href="#">Open UI</a>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header">
-            <h2>Dummy Server</h2>
-            <span class="status-pill starting" id="dummy-status">Starting</span>
-          </div>
-          <p class="pending">Example secondary server</p>
-          <div class="controls">
-            <a class="link-button" id="dummy-link" href="#">Open UI</a>
-          </div>
-        </div>
-      </section>
+      <section class="grid" id="variant-grid"></section>
     </div>
     <script>
-      const host = window.location.hostname || "localhost";
-      document.getElementById("cs2-link").href = `http://${host}:5000/`;
-      document.getElementById("dummy-link").href = `http://${host}:5001/`;
-
-      const setStatus = (el, state, label) => {
-        if (!el) return;
-        el.classList.remove("offline", "starting", "live");
-        el.classList.add(state);
-        el.textContent = label;
+      const grid = document.getElementById("variant-grid");
+      const statusLabels = {
+        live: "Live",
+        starting: "Starting",
+        offline: "Offline",
       };
 
-      const ping = (url, timeoutMs = 2000) => {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-        return fetch(url, { mode: "no-cors", signal: controller.signal })
-          .then(() => true)
-          .catch(() => false)
-          .finally(() => clearTimeout(timer));
+      const resolveHost = async () => {
+        if (window.location.hostname) {
+          return window.location.hostname;
+        }
+        try {
+          const res = await fetch("/api/host");
+          if (!res.ok) return "";
+          const data = await res.json();
+          return data.host || "";
+        } catch (err) {
+          return "";
+        }
       };
 
-      const fetchStatus = (url, timeoutMs = 2000) => {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-        return fetch(url, { signal: controller.signal })
-          .then((res) => (res.ok ? res.json() : Promise.reject()))
-          .finally(() => clearTimeout(timer));
+      const buildUrl = (host, port, path) => {
+        const cleanPath = path && path.startsWith("/") ? path : `/${path || ""}`;
+        const portSuffix = port && Number(port) !== 80 ? `:${port}` : "";
+        return `http://${host}${portSuffix}${cleanPath}`;
       };
 
-      const cs2Status = document.getElementById("cs2-status");
-      const dummyStatus = document.getElementById("dummy-status");
+      const renderVariants = (variants, host) => {
+        grid.innerHTML = "";
+        if (!variants.length) {
+          const card = document.createElement("div");
+          card.className = "card";
+          const message = document.createElement("p");
+          message.className = "pending";
+          message.textContent = "No variants configured.";
+          card.appendChild(message);
+          grid.appendChild(card);
+          return;
+        }
 
-      const refreshStatuses = () => {
-        fetchStatus(`http://${host}:5000/api/status`)
-          .then((status) => {
-            if (!status.running) {
-              setStatus(cs2Status, "offline", "Offline");
-              return;
-            }
-            setStatus(cs2Status, status.ready ? "live" : "starting", status.ready ? "Live" : "Starting");
-          })
-          .catch(() => {
-            setStatus(cs2Status, "offline", "Offline");
-          });
+        variants.forEach((variant) => {
+          const card = document.createElement("div");
+          card.className = "card";
 
-        ping(`http://${host}:5001/`).then((dummyUp) => {
-          setStatus(dummyStatus, dummyUp ? "live" : "offline", dummyUp ? "Live" : "Offline");
+          const header = document.createElement("div");
+          header.className = "card-header";
+
+          const title = document.createElement("h2");
+          title.textContent = variant.display_name || variant.id;
+
+          const status = document.createElement("span");
+          const state = variant.status?.state || "starting";
+          status.className = `status-pill ${state}`;
+          status.textContent = statusLabels[state] || "Unknown";
+
+          header.appendChild(title);
+          header.appendChild(status);
+
+          const description = document.createElement("p");
+          description.className = "pending";
+          description.textContent = variant.description || "Game UI";
+
+          const controls = document.createElement("div");
+          controls.className = "controls";
+
+          const link = document.createElement("a");
+          link.className = "link-button";
+          link.href = buildUrl(host, variant.port, variant.ui_path || "/");
+          link.textContent = "Open UI";
+
+          controls.appendChild(link);
+          card.appendChild(header);
+          card.appendChild(description);
+          card.appendChild(controls);
+          grid.appendChild(card);
         });
       };
 
-      refreshStatuses();
-      setInterval(refreshStatuses, 4000);
+      let cachedHost = "";
+
+      const refreshVariants = async () => {
+        if (!cachedHost) {
+          cachedHost = await resolveHost();
+        }
+        if (!cachedHost) {
+          return;
+        }
+        try {
+          const res = await fetch("/api/variants");
+          if (!res.ok) return;
+          const variants = await res.json();
+          renderVariants(Array.isArray(variants) ? variants : [], cachedHost);
+        } catch (err) {
+          return;
+        }
+      };
+
+      refreshVariants();
+      setInterval(refreshVariants, 4000);
     </script>
   </body>
 </html>
