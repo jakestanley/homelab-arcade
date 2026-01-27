@@ -29,7 +29,7 @@ pip install -r requirements.txt
 copy config.example.yaml config.yaml
 ```
 
-Edit `config.yaml` and set `cs2.cs2_path` and `cs2.rcon_password` at minimum. If your path has spaces, wrap it in quotes (see `config.example.yaml`). Ports and ingress are owned by `homelab-infra/registry.yaml`, so ensure `portal_port`, `dummy_port`, and `cs2.web_port` match the registry. Variant metadata lives in the `variants` list.
+Edit `config.yaml` and set `cs2.cs2_path` and `cs2.rcon_password` at minimum. If your path has spaces, wrap it in quotes (see `config.example.yaml`). Ports and ingress are owned by `homelab-infra/registry.yaml`, so ensure `portal_port` matches the registry; variant upstream ports (`dummy_port`, `cs2.web_port`) are internal. Variant metadata lives in the `variants` list.
 
 Optional: set environment variables in your shell (or copy `.env.example` to `.env` and load it yourself) to override config values.
 `scripts/up.ps1` will auto-resolve `PORTAL_PORT` from `../homelab-infra/registry.yaml` for the `arcade` service.
@@ -46,20 +46,20 @@ Windows (recommended entrypoint):
 python supervisor.py
 ```
 
-Open `http://<host>:<portal_port>` for the portal, or `http://<host>:<cs2_web_port>` for the CS2 UI.
+Open `http://<host>:<portal_port>` for the portal, or `http://<host>:<portal_port>/cs2/` for the CS2 UI.
 On Windows, ports below 1024 require Administrator privileges.
 
 ## LAN access (Windows)
 
-The portal and UIs listen on all interfaces by default. If LAN clients cannot connect, allow inbound TCP ports for the portal and game UIs in Windows Firewall. Running `.\scripts\up.ps1` elevated will create the rules; non-elevated runs will print the exact `New-NetFirewallRule` commands.
+The portal and UIs listen on all interfaces by default. If LAN clients cannot connect, allow inbound TCP for the portal port in Windows Firewall. Running `.\scripts\up.ps1` elevated will create the rule; non-elevated runs will print the exact `New-NetFirewallRule` command.
 
 ## Multiple servers
 
-This repo includes simple additional servers and a portal page. The portal is served on port 80 and links to each game UI using the request hostname (LAN-safe).
+This repo includes simple additional servers and a portal page. The portal is served on `portal_port` and proxies each game UI under a subpath.
 
 - `portal_server.py` serves the index at `http://<host>:<portal_port>`
-- `cs2/server.py` serves CS2 at `http://<host>:<cs2_web_port>`
-- `dummy_server.py` serves a dummy game UI at `http://<host>:<dummy_port>`
+- `cs2/server.py` is proxied at `http://<host>:<portal_port>/cs2/`
+- `dummy_server.py` is proxied at `http://<host>:<portal_port>/dummy/`
 
 The portal and dummy pages reuse shared styles from `web/shared.css`. Variant registration is explicit in `config.yaml` under `variants`; see `docs/variants.md`.
 The CS2 server and its assets live under `cs2/`.
@@ -67,7 +67,7 @@ Config files (`config.yaml`, `config.example.yaml`, `.env`, `.env.example`, `req
 
 Portal notes:
 
-- Links are LAN-safe (no `localhost`); the portal uses the request host for UI links.
+- Links are LAN-safe and remain under the portal host/port using subpaths.
 - Each game card shows a status pill via `/api/status` for each variant.
 
 ## Run as a Windows service (NSSM)
@@ -112,7 +112,7 @@ Notes:
 - The CS2 server loads `config.yaml` automatically.
 - `SERVER_IP` is no longer used; the CS2 server auto-detects the host IP.
 - The installer will prompt for credentials so the service runs as your user. For local users, use `.\Username` or `COMPUTERNAME\Username`.
-- `scripts/install-service.ps1` defaults `ServiceName` to the repo folder name; the root `install-service.ps1` wrapper injects `ServiceName=arcade` if omitted.
+- `scripts/install-service.ps1` defaults `ServiceName` to the repo folder name; the root `install-service.ps1` wrapper defaults `ServiceName=arcade`.
 - Log files are written to `logs/` (created automatically).
 - Reinstall only if you change the repo path, script path, or NSSM config.
 

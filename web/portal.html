@@ -25,27 +25,12 @@
         offline: "Offline",
       };
 
-      const resolveHost = async () => {
-        if (window.location.hostname) {
-          return window.location.hostname;
-        }
-        try {
-          const res = await fetch("/api/host");
-          if (!res.ok) return "";
-          const data = await res.json();
-          return data.host || "";
-        } catch (err) {
-          return "";
-        }
+      const normalizePath = (path) => {
+        const base = path && path.startsWith("/") ? path : `/${path || ""}`;
+        return base.endsWith("/") ? base : `${base}/`;
       };
 
-      const buildUrl = (host, port, path) => {
-        const cleanPath = path && path.startsWith("/") ? path : `/${path || ""}`;
-        const portSuffix = port && Number(port) !== 80 ? `:${port}` : "";
-        return `http://${host}${portSuffix}${cleanPath}`;
-      };
-
-      const renderVariants = (variants, host) => {
+      const renderVariants = (variants) => {
         grid.innerHTML = "";
         if (!variants.length) {
           const card = document.createElement("div");
@@ -85,7 +70,7 @@
 
           const link = document.createElement("a");
           link.className = "link-button";
-          link.href = buildUrl(host, variant.port, variant.ui_path || "/");
+          link.href = normalizePath(variant.path || "/");
           link.textContent = "Open UI";
 
           controls.appendChild(link);
@@ -96,20 +81,12 @@
         });
       };
 
-      let cachedHost = "";
-
       const refreshVariants = async () => {
-        if (!cachedHost) {
-          cachedHost = await resolveHost();
-        }
-        if (!cachedHost) {
-          return;
-        }
         try {
           const res = await fetch("/api/variants");
           if (!res.ok) return;
           const variants = await res.json();
-          renderVariants(Array.isArray(variants) ? variants : [], cachedHost);
+          renderVariants(Array.isArray(variants) ? variants : []);
         } catch (err) {
           return;
         }

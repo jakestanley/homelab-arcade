@@ -1,7 +1,9 @@
+import http.client
 import json
 import os
 import socket
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -48,7 +50,18 @@ def coerce_port(value) -> int | None:
     return port if port > 0 else None
 
 
-def normalize_variants(raw_variants: list, env: dict) -> list[dict]:
+def resolve_config_value(config_data: dict, key: str):
+    if not key:
+        return None
+    current = config_data
+    for part in str(key).split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+def normalize_variants(raw_variants: list, env: dict, config_data: dict) -> list[dict]:
     normalized = []
     for item in raw_variants:
         if not isinstance(item, dict):
@@ -58,13 +71,24 @@ def normalize_variants(raw_variants: list, env: dict) -> list[dict]:
             continue
         display_name = item.get("display_name") or item.get("displayName") or item.get("name") or variant_id
         description = item.get("description") or ""
-        ui_path = item.get("ui_path") or item.get("uiPath") or "/"
+        mount_path = (
+            item.get("path")
+            or item.get("mount_path")
+            or item.get("mountPath")
+            or item.get("ui_path")
+            or item.get("uiPath")
+            or f"/{variant_id}"
+        )
         status_path = item.get("status_path") or item.get("statusPath") or "/api/status"
-        if not str(ui_path).startswith("/"):
-            ui_path = f"/{ui_path}"
+        if not str(mount_path).startswith("/"):
+            mount_path = f"/{mount_path}"
+        mount_path = mount_path.rstrip("/") or "/"
         if not str(status_path).startswith("/"):
             status_path = f"/{status_path}"
         port = None
+        port_key = item.get("port_key") or item.get("portKey")
+        if port_key:
+            port = coerce_port(resolve_config_value(config_data, str(port_key)))
         port_env = item.get("port_env") or item.get("portEnv")
         if port_env:
             port = coerce_port(env.get(str(port_env)) or env.get(str(port_env).upper()))
@@ -78,7 +102,7 @@ def normalize_variants(raw_variants: list, env: dict) -> list[dict]:
                 "display_name": display_name,
                 "description": description,
                 "port": port,
-                "ui_path": ui_path,
+                "path": mount_path,
                 "status_path": status_path,
             }
         )
@@ -89,7 +113,7 @@ def load_variant_registry(config_path: Path, env: dict) -> list[dict]:
     data = read_config_data(config_path)
     raw_variants = data.get("variants")
     if isinstance(raw_variants, list):
-        variants = normalize_variants(raw_variants, env)
+        variants = normalize_variants(raw_variants, env, data)
         if variants:
             return variants
     defaults = [
@@ -97,22 +121,24 @@ def load_variant_registry(config_path: Path, env: dict) -> list[dict]:
             "id": "cs2",
             "display_name": "Counter-Strike 2",
             "description": "Primary control UI",
+            "port_key": "cs2.web_port",
             "port_env": "WEB_PORT",
             "port": 5000,
             "status_path": "/api/status",
-            "ui_path": "/",
+            "path": "/cs2",
         },
         {
             "id": "dummy",
             "display_name": "Dummy Server",
             "description": "Example secondary server",
+            "port_key": "dummy_port",
             "port_env": "DUMMY_PORT",
             "port": 5001,
             "status_path": "/api/status",
-            "ui_path": "/",
+            "path": "/dummy",
         },
     ]
-    return normalize_variants(defaults, env)
+    return normalize_variants(defaults, env, data)
 
 
 def probe_variant_status(port: int, status_path: str, timeout: float = 1.5) -> dict:
@@ -134,10 +160,89 @@ def probe_variant_status(port: int, status_path: str, timeout: float = 1.5) -> d
     return {"running": True, "ready": True}
 
 
+HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+}
+
+
+def match_variant_path(request_path: str, variants: list[dict]) -> tuple[dict, str] | None:
+    for variant in variants:
+        mount_path = variant["path"]
+        if request_path == mount_path:
+            return variant, ""
+        if request_path.startswith(mount_path + "/"):
+            suffix = request_path[len(mount_path) :]
+            return variant, suffix or "/"
+    return None
+
+
 class RootRewriteHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, directory=None, default_file="portal.html", **kwargs):
         self._default_file = default_file
         super().__init__(*args, directory=directory, **kwargs)
+
+    def _proxy_request(self, variant: dict, upstream_path: str) -> None:
+        body = None
+        content_length = self.headers.get("Content-Length")
+        if content_length:
+            try:
+                body = self.rfile.read(int(content_length))
+            except ValueError:
+                body = self.rfile.read()
+
+        headers = {}
+        for key, value in self.headers.items():
+            if key.lower() in HOP_BY_HOP_HEADERS or key.lower() == "host":
+                continue
+            headers[key] = value
+        headers["Host"] = f"127.0.0.1:{variant['port']}"
+
+        conn = http.client.HTTPConnection("127.0.0.1", variant["port"], timeout=10)
+        try:
+            conn.request(self.command, upstream_path, body=body, headers=headers)
+            response = conn.getresponse()
+            data = response.read()
+        except OSError:
+            self.send_error(502, "Upstream unavailable")
+            return
+        finally:
+            conn.close()
+
+        self.send_response(response.status)
+        for key, value in response.getheaders():
+            if key.lower() in HOP_BY_HOP_HEADERS or key.lower() == "content-length":
+                continue
+            self.send_header(key, value)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(data)
+
+    def _try_proxy(self) -> bool:
+        split = urlsplit(self.path)
+        variants = load_variant_registry(DEFAULT_CONFIG_PATH, os.environ)
+        match = match_variant_path(split.path, variants)
+        if not match:
+            return False
+        variant, suffix = match
+        if suffix == "":
+            target = f"{variant['path']}/"
+            self.send_response(301)
+            self.send_header("Location", target)
+            self.end_headers()
+            return True
+        upstream_path = suffix or "/"
+        if split.query:
+            upstream_path = f"{upstream_path}?{split.query}"
+        self._proxy_request(variant, upstream_path)
+        return True
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
@@ -166,8 +271,7 @@ class RootRewriteHandler(SimpleHTTPRequestHandler):
                         "id": variant["id"],
                         "display_name": variant["display_name"],
                         "description": variant["description"],
-                        "port": variant["port"],
-                        "ui_path": variant["ui_path"],
+                        "path": variant["path"],
                         "status": {"state": state, **status},
                     }
                 )
@@ -178,9 +282,31 @@ class RootRewriteHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self._try_proxy():
+            return
         if path in {"", "/"}:
             self.path = f"/{self._default_file}"
         return super().do_GET()
+
+    def do_POST(self):
+        if self._try_proxy():
+            return
+        self.send_error(405)
+
+    def do_PUT(self):
+        if self._try_proxy():
+            return
+        self.send_error(405)
+
+    def do_DELETE(self):
+        if self._try_proxy():
+            return
+        self.send_error(405)
+
+    def do_PATCH(self):
+        if self._try_proxy():
+            return
+        self.send_error(405)
 
 
 def main() -> None:

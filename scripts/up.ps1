@@ -160,28 +160,7 @@ def add_port(value):
         ports.add(port)
 
 add_port(data.get("portal_port") if isinstance(data, dict) else None)
-add_port(data.get("dummy_port") if isinstance(data, dict) else None)
-
-cs2 = data.get("cs2") if isinstance(data, dict) else None
-if isinstance(cs2, dict):
-    add_port(cs2.get("web_port"))
-
-variants = data.get("variants") if isinstance(data, dict) else None
-if isinstance(variants, list):
-    for item in variants:
-        if not isinstance(item, dict):
-            continue
-        port = item.get("port")
-        if port is None:
-            env_key = item.get("port_env") or item.get("portEnv")
-            if env_key:
-                env_key = str(env_key)
-                port = os.environ.get(env_key) or os.environ.get(env_key.upper())
-        add_port(port)
-
 add_port(os.environ.get("PORTAL_PORT"))
-add_port(os.environ.get("DUMMY_PORT"))
-add_port(os.environ.get("WEB_PORT"))
 
 print(json.dumps(sorted(ports)))
 "@

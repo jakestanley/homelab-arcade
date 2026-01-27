@@ -5,15 +5,15 @@ variants:
   - id: cs2
     display_name: Counter-Strike 2
     description: Primary control UI
-    port_env: WEB_PORT
+    port_key: cs2.web_port
     status_path: /api/status
-    ui_path: /
+    path: /cs2
   - id: dummy
     display_name: Dummy Server
     description: Example secondary server
-    port_env: DUMMY_PORT
+    port_key: dummy_port
     status_path: /api/status
-    ui_path: /
+    path: /dummy
 
 cs2:
   cs2_path: "C:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive"

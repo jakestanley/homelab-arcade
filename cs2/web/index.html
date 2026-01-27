@@ -212,10 +212,9 @@
 
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script>
-      const portalHost = window.location.hostname || "localhost";
       const portalLink = document.getElementById("portal-link");
       if (portalLink) {
-        portalLink.href = `http://${portalHost}:80/`;
+        portalLink.href = "/";
       }
 
       const { createApp } = Vue;
@@ -273,10 +272,10 @@
           async loadAll() {
             try {
               const [maps, modes, config, status] = await Promise.all([
-                this.fetchJson("/api/maps"),
-                this.fetchJson("/api/modes"),
-                this.fetchJson("/api/config"),
-                this.fetchJson("/api/status"),
+                this.fetchJson("api/maps"),
+                this.fetchJson("api/modes"),
+                this.fetchJson("api/config"),
+                this.fetchJson("api/status"),
               ]);
               this.maps = maps.maps;
               this.modes = modes.modes;
@@ -291,7 +290,7 @@
           },
           async loadBotSettings() {
             try {
-              const payload = await this.fetchJson("/api/bot-settings");
+              const payload = await this.fetchJson("api/bot-settings");
               if (!this.pendingBotSettings) {
                 this.botMode = payload.mode;
                 this.botQuota = payload.quota;
@@ -303,7 +302,7 @@
           },
           async refreshStatus() {
             try {
-              const status = await this.fetchJson("/api/status");
+              const status = await this.fetchJson("api/status");
               this.status = status;
             } catch (error) {
               this.errorMessage = error.message;
@@ -311,7 +310,7 @@
           },
           async refreshLogs() {
             try {
-              const payload = await this.fetchJson("/api/logs");
+              const payload = await this.fetchJson("api/logs");
               this.logs = payload.lines || [];
             } catch (error) {
               this.errorMessage = error.message;
@@ -319,7 +318,7 @@
           },
           async refreshApiLogs() {
             try {
-              const payload = await this.fetchJson("/api/flask-logs");
+              const payload = await this.fetchJson("api/flask-logs");
               this.apiLogs = payload.lines || [];
             } catch (error) {
               this.errorMessage = error.message;
@@ -327,7 +326,7 @@
           },
           async refreshRconLogs() {
             try {
-              const payload = await this.fetchJson("/api/rcon-logs");
+              const payload = await this.fetchJson("api/rcon-logs");
               this.rconLogs = payload.lines || [];
             } catch (error) {
               this.errorMessage = error.message;
@@ -336,7 +335,7 @@
           async clearLogs() {
             this.logs = [];
             try {
-              await this.fetchJson("/api/logs/clear", { method: "POST" });
+              await this.fetchJson("api/logs/clear", { method: "POST" });
             } catch (error) {
               this.errorMessage = error.message;
             }
@@ -344,7 +343,7 @@
           async clearApiLogs() {
             this.apiLogs = [];
             try {
-              await this.fetchJson("/api/flask-logs/clear", { method: "POST" });
+              await this.fetchJson("api/flask-logs/clear", { method: "POST" });
             } catch (error) {
               this.errorMessage = error.message;
             }
@@ -352,7 +351,7 @@
           async clearRconLogs() {
             this.rconLogs = [];
             try {
-              await this.fetchJson("/api/rcon-logs/clear", { method: "POST" });
+              await this.fetchJson("api/rcon-logs/clear", { method: "POST" });
             } catch (error) {
               this.errorMessage = error.message;
             }
@@ -472,7 +471,7 @@
             if (!this.pendingChange) return;
             this.errorMessage = "";
             try {
-              const payload = await this.fetchJson("/api/change", {
+              const payload = await this.fetchJson("api/change", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -490,7 +489,7 @@
           async startServer() {
             this.errorMessage = "";
             try {
-              const payload = await this.fetchJson("/api/start", {
+              const payload = await this.fetchJson("api/start", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ extra_cvars_enabled: this.extraCvarsEnabled }),
@@ -503,7 +502,7 @@
           async stopServer() {
             this.errorMessage = "";
             try {
-              const payload = await this.fetchJson("/api/stop", { method: "POST" });
+              const payload = await this.fetchJson("api/stop", { method: "POST" });
               this.status = payload;
             } catch (error) {
               this.errorMessage = error.message;
@@ -512,7 +511,7 @@
           async togglePause() {
             this.errorMessage = "";
             try {
-              const payload = await this.fetchJson("/api/pause", {
+              const payload = await this.fetchJson("api/pause", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ action: "toggle" }),
@@ -526,7 +525,7 @@
           async sendCommand(command) {
             this.errorMessage = "";
             try {
-              const payload = await this.fetchJson("/api/rcon", {
+              const payload = await this.fetchJson("api/rcon", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ command }),
