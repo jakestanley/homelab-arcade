@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Insurgency: Sandstorm Control</title>
+    <link rel="stylesheet" href="/shared.css" />
+  </head>
+  <body>
+    <div id="app" class="shell">
+      <header>
+        <div>
+          <div class="subtitle">Variant Console</div>
+          <h1>Insurgency: Sandstorm</h1>
+        </div>
+        <a id="portal-link" class="link-button" href="/">Back To Portal</a>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <div class="card-header">
+            <h2>Status</h2>
+            <span class="status-pill" :class="statusClass">{{ statusText }}</span>
+          </div>
+          <div class="status-grid">
+            <div class="status-item">
+              <span>Process</span>
+              {{ status.pid || "Not running" }}
+            </div>
+            <div class="status-item">
+              <span>Map</span>
+              {{ status.map || config.default_map || "-" }}
+            </div>
+            <div class="status-item">
+              <span>Scenario</span>
+              {{ status.scenario || config.default_scenario || "-" }}
+            </div>
+            <div class="status-item">
+              <span>Ports</span>
+              {{ config.game_port || "-" }} / {{ config.query_port || "-" }}
+            </div>
+          </div>
+          <div class="controls">
+            <button class="accent" @click="startServer" :disabled="status.running || requestPending">
+              {{ requestPending && pendingAction === "start" ? "Starting..." : "Start Server" }}
+            </button>
+            <button class="secondary" @click="stopServer" :disabled="!status.running || requestPending">
+              {{ requestPending && pendingAction === "stop" ? "Stopping..." : "Stop Server" }}
+            </button>
+          </div>
+          <div class="pending">
+            Install path: {{ config.sandstorm_path || "Configure sandstorm.sandstorm_path in config.yaml" }}
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Defaults</h2>
+          <div class="status-grid">
+            <div class="status-item">
+              <span>Default Map</span>
+              {{ config.default_map || "-" }}
+            </div>
+            <div class="status-item">
+              <span>Default Scenario</span>
+              {{ config.default_scenario || "-" }}
+            </div>
+            <div class="status-item">
+              <span>Max Players</span>
+              {{ config.max_players || "-" }}
+            </div>
+            <div class="status-item">
+              <span>Web Port</span>
+              {{ config.web_port || "-" }}
+            </div>
+          </div>
+        </div>
+
+        <div class="card full-width">
+          <div class="card-header">
+            <h2>Server Console</h2>
+            <div class="controls" style="margin-top: 0">
+              <button class="secondary" @click="clearLogs">Clear</button>
+              <button @click="refreshLogs">Refresh</button>
+            </div>
+          </div>
+          <div class="console">
+            <div v-if="logs.length === 0">No output yet.</div>
+            <div v-for="(line, index) in logs" :key="index">{{ line }}</div>
+          </div>
+          <div class="error" v-if="errorMessage">{{ errorMessage }}</div>
+        </div>
+      </section>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script>
+      const portalLink = document.getElementById("portal-link");
+      if (portalLink) {
+        portalLink.href = "/";
+      }
+
+      const { createApp } = Vue;
+
+      createApp({
+        data() {
+          return {
+            status: { running: false, ready: false, pid: null, map: "", scenario: "" },
+            config: {
+              sandstorm_path: "",
+              default_map: "",
+              default_scenario: "",
+              game_port: "",
+              query_port: "",
+              max_players: "",
+              web_port: "",
+            },
+            logs: [],
+            errorMessage: "",
+            requestPending: false,
+            pendingAction: "",
+          };
+        },
+        computed: {
+          statusText() {
+            if (!this.status.running) {
+              return "Offline";
+            }
+            return this.status.ready ? "Live" : "Starting";
+          },
+          statusClass() {
+            if (!this.status.running) {
+              return "offline";
+            }
+            return this.status.ready ? "live" : "starting";
+          },
+        },
+        methods: {
+          async fetchJson(url, options) {
+            const response = await fetch(url, options);
+            const payload = await response.json();
+            if (!response.ok) {
+              throw new Error(payload.message || payload.error || "Request failed");
+            }
+            return payload;
+          },
+          async loadAll() {
+            this.errorMessage = "";
+            try {
+              const [status, config, logs] = await Promise.all([
+                this.fetchJson("api/status"),
+                this.fetchJson("api/config"),
+                this.fetchJson("api/logs"),
+              ]);
+              this.status = status;
+              this.config = {
+                sandstorm_path: config.sandstorm_path || "",
+                default_map: config.default_map || "",
+                default_scenario: config.default_scenario || "",
+                game_port: config.game_port || "",
+                query_port: config.query_port || "",
+                max_players: config.max_players || "",
+                web_port: config.web_port || "",
+              };
+              this.logs = logs.lines || [];
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async refreshStatus() {
+            try {
+              const status = await this.fetchJson("api/status");
+              this.status = status;
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async refreshLogs() {
+            try {
+              const payload = await this.fetchJson("api/logs");
+              this.logs = payload.lines || [];
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async clearLogs() {
+            this.logs = [];
+            try {
+              await this.fetchJson("api/logs/clear", { method: "POST" });
+            } catch (error) {
+              this.errorMessage = error.message;
+            }
+          },
+          async startServer() {
+            this.requestPending = true;
+            this.pendingAction = "start";
+            this.errorMessage = "";
+            try {
+              const payload = await this.fetchJson("api/start", { method: "POST" });
+              this.status = payload;
+              await this.refreshLogs();
+            } catch (error) {
+              this.errorMessage = error.message;
+            } finally {
+              this.requestPending = false;
+              this.pendingAction = "";
+            }
+          },
+          async stopServer() {
+            this.requestPending = true;
+            this.pendingAction = "stop";
+            this.errorMessage = "";
+            try {
+              const payload = await this.fetchJson("api/stop", { method: "POST" });
+              this.status = payload;
+              await this.refreshLogs();
+            } catch (error) {
+              this.errorMessage = error.message;
+            } finally {
+              this.requestPending = false;
+              this.pendingAction = "";
+            }
+          },
+        },
+        mounted() {
+          this.loadAll();
+          setInterval(this.refreshStatus, 3000);
+          setInterval(this.refreshLogs, 4000);
+        },
+      }).mount("#app");
+    </script>
+  </body>
+</html>

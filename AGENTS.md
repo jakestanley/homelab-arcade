@@ -1,3 +1,10 @@
+# Agents
+
+## Vendored Standards
+
+All behavioural. structural and configuration decisions must refer to vendored documentation under:
+- `imported/`
+
 ## Repo Constraints (User-Provided)
 
 - Keep a single `.env`, `.env.example`, and `requirements.txt` at repo root.
@@ -6,3 +13,4 @@
 - Portal runs on port 80 and links to each game server UI; links must be LAN-safe (avoid `localhost`).
 - CS2 server should auto-detect host IP for binding/RCON (no `SERVER_IP` in `.env`).
 - Do not change existing CS2 server logic unless explicitly requested.
+- Refer to `docs/variants.md`

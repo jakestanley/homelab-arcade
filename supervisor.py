@@ -27,9 +27,13 @@ def main() -> None:
     cs2_env = os.environ.copy()
     cs2_env.setdefault("WEB_PORT", "5000")
 
+    sandstorm_env = os.environ.copy()
+    sandstorm_env.setdefault("SANDSTORM_WEB_PORT", "5002")
+
     processes = [
         start_process([python, str(root / "portal_server.py")], env=portal_env, cwd=str(root)),
         start_process([python, str(root / "cs2" / "server.py")], env=cs2_env, cwd=str(root)),
+        start_process([python, str(root / "sandstorm" / "server.py")], env=sandstorm_env, cwd=str(root)),
         start_process([python, str(root / "dummy_server.py")], env=dummy_env, cwd=str(root)),
     ]
 

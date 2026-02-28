@@ -8,6 +8,12 @@ variants:
     port_key: cs2.web_port
     status_path: /api/status
     path: /cs2
+  - id: sandstorm
+    display_name: "Insurgency: Sandstorm"
+    description: Start and stop the dedicated server
+    port_key: sandstorm.sandstorm_web_port
+    status_path: /api/status
+    path: /sandstorm
   - id: dummy
     display_name: Dummy Server
     description: Example secondary server
@@ -38,3 +44,18 @@ cs2:
   api_log_limit: 200
   api_log_buffer: 500
   shutdown_timeout: 8
+
+sandstorm:
+  sandstorm_path: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\sandstorm_server"
+  sandstorm_web_port: 5002
+  sandstorm_game_port: 27102
+  sandstorm_query_port: 27131
+  sandstorm_max_players: 28
+  sandstorm_default_map: Farmhouse
+  sandstorm_default_scenario: "Scenario_Farmhouse_Checkpoint_Security"
+  sandstorm_hostname: "Homelab Sandstorm"
+  sandstorm_no_eac: true
+  sandstorm_extra_args: ""
+  sandstorm_startup_grace_seconds: 8
+  sandstorm_shutdown_timeout: 8
+  sandstorm_log_limit: 200
