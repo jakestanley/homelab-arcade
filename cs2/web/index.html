@@ -82,12 +82,7 @@
             </div>
           </div>
           <div class="controls">
-            <button class="accent" @click="stageChange">Stage Change</button>
-            <button class="secondary" @click="clearChange" :disabled="!pendingChange">Clear</button>
-            <button @click="confirmChange" :disabled="!pendingChange">Confirm Change</button>
-          </div>
-          <div class="pending" v-if="pendingChange">
-            Pending: {{ pendingChange.mode }} on {{ pendingChange.mapName }}
+            <button @click="confirmChange" :disabled="!selectedMap || !selectedMode">Confirm Change</button>
           </div>
         </div>
 
@@ -120,12 +115,7 @@
             Bot Controllable
           </label>
           <div class="controls">
-            <button class="accent" @click="stageBotSettings">Stage</button>
-            <button class="secondary" @click="clearBotSettings" :disabled="!pendingBotSettings">Clear</button>
-            <button @click="confirmBotSettings" :disabled="!pendingBotSettings">Confirm</button>
-          </div>
-          <div class="pending" v-if="pendingBotSettings">
-            Pending: mode {{ pendingBotSettings.mode }}, quota {{ pendingBotSettings.quota }}
+            <button @click="confirmBotSettings">Confirm</button>
           </div>
         </div>
 
@@ -136,9 +126,12 @@
               v-model="customCommand"
               type="text"
               placeholder="Enter any RCON command"
+              :disabled="customCommandSending"
               @keydown.enter.prevent="sendCustom"
             />
-            <button class="accent" @click="sendCustom" :disabled="!customCommand.trim()">Send</button>
+            <button class="accent" @click="sendCustom" :disabled="customCommandSending || !customCommand.trim()">
+              {{ customCommandSending ? "Sending..." : "Send" }}
+            </button>
           </div>
           <div class="error" v-if="errorMessage">{{ errorMessage }}</div>
         </div>
@@ -227,15 +220,14 @@
             modes: [],
             selectedMode: "",
             selectedMap: "",
-            pendingChange: null,
             lastResponse: "",
             errorMessage: "",
             customCommand: "",
+            customCommandSending: false,
             extraCvarsEnabled: false,
             botMode: "fill",
             botQuota: 10,
             botControllable: false,
-            pendingBotSettings: null,
             apiLogs: [],
             logs: [],
             rconLogs: [],
@@ -291,11 +283,9 @@
           async loadBotSettings() {
             try {
               const payload = await this.fetchJson("api/bot-settings");
-              if (!this.pendingBotSettings) {
-                this.botMode = payload.mode;
-                this.botQuota = payload.quota;
-                this.botControllable = !!payload.controllable;
-              }
+              this.botMode = payload.mode;
+              this.botQuota = payload.quota;
+              this.botControllable = !!payload.controllable;
             } catch (error) {
               this.errorMessage = error.message;
             }
@@ -431,56 +421,39 @@
               this.rconLogs = this.rconLogs.slice(-300);
             }
           },
-          stageChange() {
-            const map = this.maps.find((entry) => entry.id === this.selectedMap);
-            if (!map) {
-              return;
-            }
-            this.pendingChange = { mode: this.selectedMode, map: map.id, mapName: map.name };
-          },
-          clearChange() {
-            this.pendingChange = null;
-          },
-          stageBotSettings() {
+          async confirmBotSettings() {
+            this.errorMessage = "";
             const quota = Number(this.botQuota);
             if (!Number.isFinite(quota) || quota < 1 || quota > 10) {
               this.errorMessage = "Bot quota must be between 1 and 10.";
               return;
             }
             const mode = this.botMode === "normal" ? "normal" : "fill";
-            this.pendingBotSettings = { mode, quota, controllable: !!this.botControllable };
-          },
-          clearBotSettings() {
-            this.pendingBotSettings = null;
-          },
-          async confirmBotSettings() {
-            if (!this.pendingBotSettings) return;
-            this.errorMessage = "";
+            const controllable = !!this.botControllable;
             try {
-              await this.sendCommand(`bot_quota_mode ${this.pendingBotSettings.mode}`);
-              await this.sendCommand(`bot_quota ${this.pendingBotSettings.quota}`);
-              await this.sendCommand(`bot_controllable ${this.pendingBotSettings.controllable ? 1 : 0}`);
+              await this.sendCommand(`bot_quota_mode ${mode}`);
+              await this.sendCommand(`bot_quota ${quota}`);
+              await this.sendCommand(`bot_controllable ${controllable ? 1 : 0}`);
               this.lastResponse = "Bot settings updated.";
-              this.pendingBotSettings = null;
               await this.loadBotSettings();
             } catch (error) {
               this.errorMessage = error.message;
             }
           },
           async confirmChange() {
-            if (!this.pendingChange) return;
+            const map = this.maps.find((entry) => entry.id === this.selectedMap);
+            if (!map || !this.selectedMode) return;
             this.errorMessage = "";
             try {
               const payload = await this.fetchJson("api/change", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  map_id: this.pendingChange.map,
-                  mode: this.pendingChange.mode,
+                  map_id: map.id,
+                  mode: this.selectedMode,
                 }),
               });
               this.lastResponse = payload.response || "Map change sent.";
-              this.pendingChange = null;
               await this.refreshStatus();
             } catch (error) {
               this.errorMessage = error.message;
@@ -544,9 +517,15 @@
             }
           },
           async sendCustom() {
-            if (!this.customCommand.trim()) return;
-            await this.sendCommand(this.customCommand.trim());
-            this.customCommand = "";
+            if (this.customCommandSending) return;
+            const command = this.customCommand.trim();
+            if (!command) return;
+            this.customCommandSending = true;
+            try {
+              await this.sendCommand(command);
+            } finally {
+              this.customCommandSending = false;
+            }
           },
         },
         mounted() {
