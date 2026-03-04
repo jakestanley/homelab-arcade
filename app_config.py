@@ -2,7 +2,21 @@ import os
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG_PATH = ROOT_DIR / "config.yaml"
+CONFIG_PATH_ENV_VAR = "HOMELAB_ARCADE_CONFIG_PATH"
+
+
+def resolve_default_config_path() -> Path:
+	raw = os.environ.get(CONFIG_PATH_ENV_VAR, "").strip()
+	if not raw:
+		return ROOT_DIR / "config.yaml"
+
+	path = Path(raw).expanduser()
+	if not path.is_absolute():
+		path = ROOT_DIR / path
+	return path
+
+
+DEFAULT_CONFIG_PATH = resolve_default_config_path()
 
 
 def load_config(path: Path | None = None, game: str | None = None) -> None:

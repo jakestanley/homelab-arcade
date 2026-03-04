@@ -1,123 +1,142 @@
-# CS2 Control Deck
+# Homelab Arcade
 
-Self-contained CS2 server manager with a web UI for starting/stopping, RCON actions, and map/mode changes.
-Runtime is Windows + NSSM (no Docker); ingress and ports are defined by `homelab-infra/registry.yaml` (service name: `arcade`).
+Homelab Arcade runs a small portal plus game control UIs from one supervisor process. The portal is the public entrypoint for the service; ingress, DNS, and exposed ports are owned by `homelab-infra` and must not be configured in this repo.
 
-## Setup
+This repo now supports two host runtime models:
 
-1) Create and activate a virtual environment (Windows)
+- Windows host service via NSSM and `scripts/up.ps1`
+- Generic Linux host service via `systemd` and `scripts/up.sh`
 
-```bash
-python -m venv .venv
+The Linux systemd path is intentionally simple and Nix-friendly: the long-running contract is `supervisor.py`, the unit uses an absolute `ExecStart=`, and host-specific config can live outside the checkout via `HOMELAB_ARCADE_CONFIG_PATH`.
+
+## Runtime Model
+
+The supervisor starts all repo-owned components together:
+
+- `portal_server.py` on `PORTAL_PORT`
+- `cs2/server.py` on `WEB_PORT`
+- `sandstorm/server.py` on `SANDSTORM_WEB_PORT`
+- `dummy_server.py` on `DUMMY_PORT`
+
+The portal serves on port 80 by default and links to each variant UI by LAN-safe subpaths on the same host. External exposure, reverse proxying, and final port assignments are managed in `homelab-infra`, not here.
+
+Variant command paths remain host-specific. The example `config.example.yaml` is Windows-oriented for CS2 and Sandstorm, so Linux hosts must provide Linux-appropriate executable paths if those runners are expected to work there.
+
+## Configuration
+
+Application config can come from either environment variables or YAML:
+
+- Root env template for manual runs: [`.env.example`](/Users/jake/git/github.com/jakestanley/homelab-arcade/.env.example)
+- Example structured config: [`config.example.yaml`](/Users/jake/git/github.com/jakestanley/homelab-arcade/config.example.yaml)
+- Linux host env template for `systemd`: [`systemd/arcade.env.example`](/Users/jake/git/github.com/jakestanley/homelab-arcade/systemd/arcade.env.example)
+
+`HOMELAB_ARCADE_CONFIG_PATH` is optional. If set, the service reads config from that path instead of repo-local `config.yaml`. That is the recommended Linux host shape so mutable config can live under `/etc/arcade/`.
+
+## Dependencies
+
+Required host dependencies:
+
+- `systemd` for Linux service supervision
+- A Python 3 interpreter at the path used by the launcher
+- Python packages from [`requirements.txt`](/Users/jake/git/github.com/jakestanley/homelab-arcade/requirements.txt)
+
+Verification commands:
+
+```sh
+systemctl --version && systemd-analyze --version
+test -x /srv/arcade/.venv/bin/python3
+/srv/arcade/.venv/bin/python3 -c "import flask, yaml, rcon"
 ```
 
-Windows PowerShell:
+For Windows NSSM deployments, continue using the existing PowerShell workflow documented below.
+
+## Linux systemd
+
+Canonical Linux entrypoint:
+
+- [`scripts/up.sh`](/Users/jake/git/github.com/jakestanley/homelab-arcade/scripts/up.sh)
+
+Repo-owned unit template:
+
+- [`systemd/arcade.service`](/Users/jake/git/github.com/jakestanley/homelab-arcade/systemd/arcade.service)
+
+Recommended host file locations:
+
+- Repo checkout: `/srv/arcade`
+- Unit install path: `/etc/systemd/system/arcade.service`
+- Host env file: `/etc/arcade/arcade.env`
+- Host config file: `/etc/arcade/config.yaml`
+
+Suggested setup:
+
+```sh
+sudo useradd --system --home /srv/arcade --shell /usr/sbin/nologin arcade
+sudo install -d -o arcade -g arcade /srv/arcade
+sudo install -d -o root -g arcade -m 0750 /etc/arcade
+sudo cp -R /path/to/homelab-arcade/. /srv/arcade/
+sudo chown -R arcade:arcade /srv/arcade
+sudo -u arcade python3 -m venv /srv/arcade/.venv
+sudo -u arcade /srv/arcade/.venv/bin/pip install -r /srv/arcade/requirements.txt
+sudo install -m 0644 /srv/arcade/systemd/arcade.service /etc/systemd/system/arcade.service
+sudo install -o root -g arcade -m 0640 /srv/arcade/systemd/arcade.env.example /etc/arcade/arcade.env
+sudo install -o arcade -g arcade -m 0640 /srv/arcade/config.example.yaml /etc/arcade/config.yaml
+```
+
+Then edit `/etc/arcade/arcade.env` and set at minimum:
+
+```sh
+ARCADE_PYTHON=/srv/arcade/.venv/bin/python3
+HOMELAB_ARCADE_CONFIG_PATH=/etc/arcade/config.yaml
+PORTAL_PORT=<value assigned by homelab-infra>
+```
+
+Enable and start:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now arcade.service
+```
+
+View logs:
+
+```sh
+journalctl -u arcade.service -f
+```
+
+Manual Linux start without `systemd`:
+
+```sh
+ARCADE_PYTHON=/srv/arcade/.venv/bin/python3 HOMELAB_ARCADE_CONFIG_PATH=/etc/arcade/config.yaml /srv/arcade/scripts/up.sh
+```
+
+## Windows NSSM
+
+Windows remains the existing primary runtime for the bundled CS2 and Sandstorm examples.
+
+Create and activate a virtual environment:
 
 ```powershell
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-2) Install dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-3) Configure environment
-
-```bash
-copy config.example.yaml config.yaml
-```
-
-Edit `config.yaml` and set `cs2.cs2_path` and `cs2.rcon_password` at minimum. If your path has spaces, wrap it in quotes (see `config.example.yaml`). Ports and ingress are owned by `homelab-infra/registry.yaml`, so ensure `portal_port` matches the registry; variant upstream ports (`dummy_port`, `cs2.web_port`) are internal. Variant metadata lives in the `variants` list.
-
-Optional: set environment variables in your shell (or copy `.env.example` to `.env` and load it yourself) to override config values.
-`scripts/up.ps1` will auto-resolve `PORTAL_PORT` from `../homelab-infra/registry.yaml` for the `arcade` service.
-
-## Run
-
-Windows (recommended entrypoint):
+Create `config.yaml` from [`config.example.yaml`](/Users/jake/git/github.com/jakestanley/homelab-arcade/config.example.yaml), then run:
 
 ```powershell
 .\scripts\up.ps1
 ```
 
-```bash
-python supervisor.py
-```
-
-Open `http://<host>:<portal_port>` for the portal, or `http://<host>:<portal_port>/cs2/` for the CS2 UI.
-On Windows, ports below 1024 require Administrator privileges.
-
-## LAN access (Windows)
-
-The portal and UIs listen on all interfaces by default. If LAN clients cannot connect, allow inbound TCP for the portal port in Windows Firewall. Running `.\scripts\up.ps1` elevated will create the rule; non-elevated runs will print the exact `New-NetFirewallRule` command.
-
-## Multiple servers
-
-This repo includes simple additional servers and a portal page. The portal is served on `portal_port` and proxies each game UI under a subpath.
-
-- `portal_server.py` serves the index at `http://<host>:<portal_port>`
-- `cs2/server.py` is proxied at `http://<host>:<portal_port>/cs2/`
-- `dummy_server.py` is proxied at `http://<host>:<portal_port>/dummy/`
-
-The portal and dummy pages reuse shared styles from `web/shared.css`. Variant registration is explicit in `config.yaml` under `variants`; see `docs/variants.md`.
-The CS2 server and its assets live under `cs2/`.
-Config files (`config.yaml`, `config.example.yaml`, `.env`, `.env.example`, `requirements.txt`) remain at repo root.
-
-Portal notes:
-
-- Links are LAN-safe and remain under the portal host/port using subpaths.
-- Each game card shows a status pill via `/api/status` for each variant.
-
-## Run as a Windows service (NSSM)
-
-Assumes NSSM is installed and on PATH. `scripts/up.ps1` will create `.venv` on first run.
-
-PowerShell (run as Administrator):
+Install or update the NSSM service:
 
 ```powershell
 .\scripts\install-service.ps1 -Start
 ```
 
-Start/stop/status:
-
-```powershell
-nssm start arcade
-nssm stop arcade
-nssm status arcade
-```
-
-Restart after code changes:
-
-```powershell
-nssm restart arcade
-```
-
-Install script options:
-
-```powershell
-.\scripts\install-service.ps1 -ServiceName "arcade" -RepoPath "c:\path\to\homelab-arcade" -PythonExe "C:\Path\To\python.exe" -Start
-```
-
-Remove the service:
-
-```powershell
-nssm remove arcade confirm
-```
-
-Notes:
-
-- The installer runs the supervisor, which starts the portal, CS2 UI, and dummy server together.
-- The CS2 server loads `config.yaml` automatically.
-- `SERVER_IP` is no longer used; the CS2 server auto-detects the host IP.
-- The installer will prompt for credentials so the service runs as your user. For local users, use `.\Username` or `COMPUTERNAME\Username`.
-- `scripts/install-service.ps1` defaults `ServiceName` to the repo folder name; the root `install-service.ps1` wrapper defaults `ServiceName=arcade`.
-- Log files are written to `logs/` (created automatically).
-- Reinstall only if you change the repo path, script path, or NSSM config.
+The installer runs the supervisor so the portal and all variants stay under one Windows service, matching the repo constraint for `install-service.ps1`.
 
 ## Notes
 
-- The server assumes CS2 is already installed at `CS2_PATH`.
-- Default mode/map: competitive on de_dust2 (override via `config.yaml`).
-- The web UI can send RCON commands, including a custom command input.
+- `SERVER_IP` is not required; CS2 auto-detects the host IP.
+- The Linux unit writes logs to journald by default.
+- This repo does not install firewall rules, reverse proxies, registry entries, or DNS for Linux hosts; that wiring belongs in `homelab-infra`.
