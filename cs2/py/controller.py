@@ -1,4 +1,4 @@
-from py.map import Map
+from cs2.py.map import Map
 
 from rcon.source import Client
 

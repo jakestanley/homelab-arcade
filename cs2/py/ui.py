@@ -5,9 +5,9 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, \
     QLabel, QWidget, QDialogButtonBox, QPushButton, QListWidget, \
     QListWidgetItem, QRadioButton, QButtonGroup
 
-from py.map import Map
-from py.controller import Controller
-from py.modes import MODES
+from cs2.py.map import Map
+from cs2.py.controller import Controller
+from cs2.py.modes import MODES
 
 
 def _ControlPanel() -> QVBoxLayout:

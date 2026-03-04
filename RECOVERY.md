@@ -5,9 +5,9 @@
 Recover this service onto a Linux host with:
 
 - `systemd` available and functional
-- a checkout of this repo restored to `/srv/arcade` or another stable path
+- the packaged `homelab-arcade` executable restored to a stable absolute path
 - a dedicated `arcade` user and group
-- a Python 3 interpreter and installed dependencies from [`requirements.txt`](/Users/jake/git/github.com/jakestanley/homelab-arcade/requirements.txt)
+- a Python 3 runtime and installed dependencies from [`requirements.txt`](/Users/jake/git/github.com/jakestanley/homelab-arcade/requirements.txt) or [`pyproject.toml`](/Users/jake/git/github.com/jakestanley/homelab-arcade/pyproject.toml)
 - host-specific config restored from [`config.example.yaml`](/Users/jake/git/github.com/jakestanley/homelab-arcade/config.example.yaml)
 
 Quick checks:
@@ -16,8 +16,8 @@ Quick checks:
 getent passwd arcade >/dev/null
 getent group arcade >/dev/null
 systemctl --version && systemd-analyze --version
-test -x /srv/arcade/.venv/bin/python3
-/srv/arcade/.venv/bin/python3 -c "import flask, yaml, rcon"
+test -x /usr/local/bin/homelab-arcade
+python3 -c "import flask, yaml, rcon"
 ```
 
 ## Service User And Files
@@ -25,25 +25,25 @@ test -x /srv/arcade/.venv/bin/python3
 Recommended Linux host locations:
 
 - service user/group: `arcade:arcade`
-- repo checkout: `/srv/arcade`
+- installed executable: `/usr/local/bin/homelab-arcade`
 - unit file: `/etc/systemd/system/arcade.service`
 - host env file: `/etc/arcade/arcade.env`
 - host config file: `/etc/arcade/config.yaml`
+- writable state directory: `/var/lib/homelab-arcade`
 
 Repo-owned systemd assets:
 
 - [`systemd/arcade.service`](/Users/jake/git/github.com/jakestanley/homelab-arcade/systemd/arcade.service)
 - [`systemd/arcade.env.example`](/Users/jake/git/github.com/jakestanley/homelab-arcade/systemd/arcade.env.example)
-- [`scripts/up.sh`](/Users/jake/git/github.com/jakestanley/homelab-arcade/scripts/up.sh)
 
 There is no repo-owned Linux log directory to restore. Journald is the default log sink. Game installs and their writable state remain wherever `CS2_PATH` and `SANDSTORM_PATH` point.
 
-Ensure `/srv/arcade` and `/etc/arcade/config.yaml` are readable by `arcade:arcade`. The env file may stay root-owned because `systemd` reads it before dropping privileges.
+Ensure `/etc/arcade/config.yaml` is readable by `arcade:arcade`. The env file may stay root-owned because `systemd` reads it before dropping privileges.
 
 ## Restore Order
 
-1. Restore the repo files to `/srv/arcade`.
-2. Restore or recreate the Python environment and reinstall dependencies.
+1. Restore or reinstall the packaged `homelab-arcade` executable.
+2. Restore the Python runtime dependencies if they are managed separately on the host.
 3. Restore `/etc/arcade/arcade.env`.
 4. Restore `/etc/arcade/config.yaml` and verify `HOMELAB_ARCADE_CONFIG_PATH` points to it.
 5. Install or restore `/etc/systemd/system/arcade.service`.
@@ -63,7 +63,7 @@ Verify runtime health:
 ```sh
 systemctl status arcade.service
 journalctl -u arcade.service -n 100 --no-pager
-curl -fsS http://127.0.0.1:${PORTAL_PORT:-80}/health
+curl -fsS http://127.0.0.1:${PORTAL_PORT:-80}/api/variants
 ```
 
 If the portal is up but a game runner fails, check host-specific executable paths in `/etc/arcade/config.yaml`. The bundled example values are Windows-oriented and may need Linux-specific replacements during recovery.

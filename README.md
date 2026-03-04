@@ -2,12 +2,13 @@
 
 Homelab Arcade runs a small portal plus game control UIs from one supervisor process. The portal is the public entrypoint for the service; ingress, DNS, and exposed ports are owned by `homelab-infra` and must not be configured in this repo.
 
-This repo now supports two host runtime models:
+This repo supports three operational shapes:
 
+- packaged Linux service via the installed `homelab-arcade` executable
+- generic mutable-host/manual runs from a repo checkout
 - Windows host service via NSSM and `scripts/up.ps1`
-- Generic Linux host service via `systemd` and `scripts/up.sh`
 
-The Linux systemd path is intentionally simple and Nix-friendly: the long-running contract is `supervisor.py`, the unit uses an absolute `ExecStart=`, and host-specific config can live outside the checkout via `HOMELAB_ARCADE_CONFIG_PATH`.
+For packaging-oriented Linux hosts, the long-running contract is the installed `homelab-arcade` console script, which dispatches `supervisor:main`. Host-specific env and YAML config stay external, and game installs remain host-managed outside the package.
 
 ## Runtime Model
 
@@ -32,63 +33,64 @@ Application config can come from either environment variables or YAML:
 
 `HOMELAB_ARCADE_CONFIG_PATH` is optional. If set, the service reads config from that path instead of repo-local `config.yaml`. That is the recommended Linux host shape so mutable config can live under `/etc/arcade/`.
 
+Host-local game install paths remain external. Keep values such as `CS2_PATH` and `SANDSTORM_PATH` in `/etc/arcade/config.yaml`, an environment file, or another host-managed config source; the package does not install the actual games.
+
 ## Dependencies
 
 Required host dependencies:
 
 - `systemd` for Linux service supervision
-- A Python 3 interpreter at the path used by the launcher
-- Python packages from [`requirements.txt`](/Users/jake/git/github.com/jakestanley/homelab-arcade/requirements.txt)
+- A Python 3 interpreter compatible with the installed package
+- Runtime Python dependencies from [`requirements.txt`](/Users/jake/git/github.com/jakestanley/homelab-arcade/requirements.txt) or the equivalent package metadata in [`pyproject.toml`](/Users/jake/git/github.com/jakestanley/homelab-arcade/pyproject.toml)
 
 Verification commands:
 
 ```sh
 systemctl --version && systemd-analyze --version
-test -x /srv/arcade/.venv/bin/python3
-/srv/arcade/.venv/bin/python3 -c "import flask, yaml, rcon"
+test -x /usr/local/bin/homelab-arcade
+python3 -c "import flask, yaml, rcon"
 ```
 
-For Windows NSSM deployments, continue using the existing PowerShell workflow documented below.
+Optional desktop helper dependency:
+
+- `pyqt6` is not required for the headless web supervisor path.
+- If you still use the legacy local CS2 desktop helper, install the package with the `desktop` extra.
 
 ## Linux systemd
 
-Canonical Linux entrypoint:
+Packaged service contract:
 
-- [`scripts/up.sh`](/Users/jake/git/github.com/jakestanley/homelab-arcade/scripts/up.sh)
+- installed executable: `homelab-arcade`
+- repo-owned unit template: [`systemd/arcade.service`](/Users/jake/git/github.com/jakestanley/homelab-arcade/systemd/arcade.service)
+- host env template: [`systemd/arcade.env.example`](/Users/jake/git/github.com/jakestanley/homelab-arcade/systemd/arcade.env.example)
 
-Repo-owned unit template:
+Recommended host file locations for package-oriented installs:
 
-- [`systemd/arcade.service`](/Users/jake/git/github.com/jakestanley/homelab-arcade/systemd/arcade.service)
-
-Recommended host file locations:
-
-- Repo checkout: `/srv/arcade`
+- installed executable: `/usr/local/bin/homelab-arcade` or another absolute package-managed path
 - Unit install path: `/etc/systemd/system/arcade.service`
 - Host env file: `/etc/arcade/arcade.env`
 - Host config file: `/etc/arcade/config.yaml`
+- Writable working/state directory: `/var/lib/homelab-arcade`
 
 Suggested setup:
 
 ```sh
-sudo useradd --system --home /srv/arcade --shell /usr/sbin/nologin arcade
-sudo install -d -o arcade -g arcade /srv/arcade
+sudo useradd --system --home /var/lib/homelab-arcade --shell /usr/sbin/nologin arcade
 sudo install -d -o root -g arcade -m 0750 /etc/arcade
-sudo cp -R /path/to/homelab-arcade/. /srv/arcade/
-sudo chown -R arcade:arcade /srv/arcade
-sudo -u arcade python3 -m venv /srv/arcade/.venv
-sudo -u arcade /srv/arcade/.venv/bin/pip install -r /srv/arcade/requirements.txt
-sudo install -m 0644 /srv/arcade/systemd/arcade.service /etc/systemd/system/arcade.service
-sudo install -o root -g arcade -m 0640 /srv/arcade/systemd/arcade.env.example /etc/arcade/arcade.env
-sudo install -o arcade -g arcade -m 0640 /srv/arcade/config.example.yaml /etc/arcade/config.yaml
+sudo install -d -o arcade -g arcade /var/lib/homelab-arcade
+sudo install -m 0644 /path/to/homelab-arcade/systemd/arcade.service /etc/systemd/system/arcade.service
+sudo install -o root -g arcade -m 0640 /path/to/homelab-arcade/systemd/arcade.env.example /etc/arcade/arcade.env
+sudo install -o arcade -g arcade -m 0640 /path/to/homelab-arcade/config.example.yaml /etc/arcade/config.yaml
 ```
 
 Then edit `/etc/arcade/arcade.env` and set at minimum:
 
 ```sh
-ARCADE_PYTHON=/srv/arcade/.venv/bin/python3
 HOMELAB_ARCADE_CONFIG_PATH=/etc/arcade/config.yaml
-PORTAL_PORT=<value assigned by homelab-infra>
+PORTAL_PORT=<host-assigned or infra-assigned value>
 ```
+
+The unit template assumes the executable is available at `/usr/local/bin/homelab-arcade`. If your package manager installs it elsewhere, change `ExecStart=` to that absolute path. Declarative NixOS units typically bypass the checked-in unit template and point directly at the package output path.
 
 Enable and start:
 
@@ -103,10 +105,25 @@ View logs:
 journalctl -u arcade.service -f
 ```
 
-Manual Linux start without `systemd`:
+## Generic Manual Linux Host
+
+The mutable-host/manual bridge still exists, but it is no longer the preferred packaging contract.
+
+Canonical wrapper for repo-checkout runs:
+
+- [`scripts/up.sh`](/Users/jake/git/github.com/jakestanley/homelab-arcade/scripts/up.sh)
+
+Typical manual setup:
 
 ```sh
-ARCADE_PYTHON=/srv/arcade/.venv/bin/python3 HOMELAB_ARCADE_CONFIG_PATH=/etc/arcade/config.yaml /srv/arcade/scripts/up.sh
+python3 -m pip install .
+HOMELAB_ARCADE_CONFIG_PATH=/etc/arcade/config.yaml homelab-arcade
+```
+
+If you explicitly want to run from a checkout instead of an installed package:
+
+```sh
+ARCADE_PYTHON=/srv/arcade/.venv/bin/python3 HOMELAB_ARCADE_CONFIG_PATH=/etc/arcade/config.yaml /path/to/homelab-arcade/scripts/up.sh
 ```
 
 ## Windows NSSM
@@ -119,6 +136,8 @@ Create and activate a virtual environment:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+# install optional desktop helper deps only if you need the PyQt CS2 tool
+# pip install ".[desktop]"
 ```
 
 Create `config.yaml` from [`config.example.yaml`](/Users/jake/git/github.com/jakestanley/homelab-arcade/config.example.yaml), then run:

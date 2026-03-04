@@ -21,15 +21,15 @@ WEB_DIR = BASE_DIR / "web"
 SHARED_DIR = ROOT_DIR / "web"
 MAPS_FILE = BASE_DIR / "maps.csv"
 
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 try:
-    from py.modes import MODES
+    from cs2.py.modes import MODES
 except Exception:
     MODES = ["deathmatch", "armsrace", "casual", "competitive"]
 
-from config import DEFAULT_CONFIG_PATH, load_config
+from cs2.config import DEFAULT_CONFIG_PATH, load_config
 
 
 load_config(DEFAULT_CONFIG_PATH, game="cs2")

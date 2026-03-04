@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "homelab-arcade"
+version = "0.1.0"
+description = "Web supervisor and controller for homelab game servers."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "flask",
+  "pyyaml",
+  "rcon",
+]
+
+[project.optional-dependencies]
+desktop = [
+  "pyqt6",
+]
+
+[project.scripts]
+homelab-arcade = "supervisor:main"
+
+[tool.setuptools]
+py-modules = [
+  "app_config",
+  "config_loader",
+  "dummy_server",
+  "portal_server",
+  "supervisor",
+]
+
+[tool.setuptools.packages.find]
+include = [
+  "cs2",
+  "cs2.*",
+  "sandstorm",
+  "web",
+]
+
+[tool.setuptools.package-data]
+cs2 = [
+  "maps.csv",
+  "server.cfg",
+  "web/*.html",
+]
+sandstorm = [
+  "web/*.html",
+]
+web = [
+  "*.css",
+  "*.html",
+]

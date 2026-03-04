@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 import argparse
 import getpass
+import sys
+from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
 
-from py.map import Map, LoadMaps
-from py.controller import Controller
-from py.ui import ManagerDialog
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from cs2.py.map import LoadMaps
+from cs2.py.controller import Controller
+from cs2.py.ui import ManagerDialog
 
 
 def get_args():
