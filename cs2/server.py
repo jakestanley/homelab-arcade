@@ -11,6 +11,7 @@ import atexit
 import signal
 import sys
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -245,28 +246,65 @@ def wait_for_rcon(host: str, port: int, password: str, timeout: int) -> bool:
 
 class ServerManager:
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._process: subprocess.Popen | None = None
         self._paused = False
         self._ready = False
         self._extra_cvars_enabled = False
         self._last_map = os.environ.get("DEFAULT_MAP", "de_dust2")
         self._last_mode = os.environ.get("DEFAULT_MODE", "competitive")
+        self._last_exit_code: int | None = None
+        self._last_exit_reason: str | None = None
+        self._last_exit_at: str | None = None
+        self._last_failure_message: str | None = None
         self._log_lock = threading.Lock()
         self._log_lines: list[str] = []
 
+    def _sync_process_state(self, reason: str = "CS2 process exited") -> None:
+        with self._lock:
+            proc = self._process
+            if proc is None:
+                return
+            return_code = proc.poll()
+            if return_code is None:
+                return
+            self._process = None
+            self._ready = False
+            self._paused = False
+            self._last_exit_code = return_code
+            self._last_exit_reason = reason
+            self._last_exit_at = datetime.now(timezone.utc).isoformat()
+            if not self._last_failure_message:
+                self._last_failure_message = f"{reason}; exit code={return_code}"
+
     def is_running(self) -> bool:
-        return self._process is not None and self._process.poll() is None
+        self._sync_process_state()
+        with self._lock:
+            return self._process is not None and self._process.poll() is None
 
     def status(self) -> dict:
-        return {
-            "running": self.is_running(),
-            "pid": None if not self.is_running() else self._process.pid,
-            "paused": self._paused,
-            "ready": self._ready,
-            "map": self._last_map,
-            "mode": self._last_mode,
-        }
+        self._sync_process_state()
+        with self._lock:
+            running = self._process is not None and self._process.poll() is None
+            return {
+                "running": running,
+                "pid": None if not running else self._process.pid,
+                "paused": self._paused,
+                "ready": self._ready,
+                "map": self._last_map,
+                "mode": self._last_mode,
+                "exit_code": self._last_exit_code,
+                "last_exit_reason": self._last_exit_reason,
+                "last_exit_at": self._last_exit_at,
+                "last_failure_message": self._last_failure_message,
+            }
+
+    def startup_diagnostics(self, limit: int | None = None) -> dict:
+        self._sync_process_state()
+        tail_limit = limit if limit is not None else max(env_int("STARTUP_LOG_TAIL_LINES", 40), 1)
+        info = self.status()
+        info["log_tail_lines"] = self.logs(tail_limit)
+        return info
 
     def logs(self, limit: int = 200) -> list[str]:
         with self._log_lock:
@@ -277,6 +315,7 @@ class ServerManager:
             self._log_lines = []
 
     def _terminate_process(self, timeout: int = 8) -> None:
+        self._sync_process_state()
         proc = self._process
         if proc is None or proc.poll() is not None:
             return
@@ -286,19 +325,43 @@ class ServerManager:
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait(timeout=3)
+        finally:
+            self._sync_process_state(reason="CS2 process terminated during shutdown")
+
+    def _is_process_alive(self) -> bool:
+        self._sync_process_state()
+        return self._process is not None and self._process.poll() is None
+
+    def _mark_process_exited(self, context: str) -> str:
+        self._sync_process_state(reason=f"CS2 process exited while {context}")
+        message = self._startup_failure_message(stage=context)
+        self._last_failure_message = message
+        self._ready = False
+        self._paused = False
+        app.logger.error(
+            "event=cs2_process_dead context=%s exit_code=%s last_exit_at=%s details=%s",
+            context,
+            self._last_exit_code,
+            self._last_exit_at,
+            message,
+        )
+        return message
 
     def _startup_failure_message(self, stage: str, timeout: int | None = None) -> str:
+        self._sync_process_state(reason=f"CS2 process exited while {stage}")
         proc = self._process
-        return_code = None if proc is None else proc.poll()
+        return_code = self._last_exit_code if proc is None else proc.poll()
         tail_limit = max(env_int("STARTUP_LOG_TAIL_LINES", 40), 1)
         tail_lines = self.logs(tail_limit)
         if timeout is None:
-            reason = f"CS2 process exited during startup while {stage}"
+            reason = f"CS2 process exited while {stage}"
         else:
             reason = f"CS2 startup timed out while {stage} after {timeout}s"
         details = [reason]
         if return_code is not None:
             details.append(f"exit code={return_code}")
+        if self._last_exit_at:
+            details.append(f"exit_at={self._last_exit_at}")
         if tail_lines:
             details.append(f"last {len(tail_lines)} CS2 log lines:\n" + "\n".join(tail_lines))
         else:
@@ -311,6 +374,7 @@ class ServerManager:
             return False, "CS2 process handle is unavailable during startup"
         deadline = time.time() + timeout
         while time.time() < deadline:
+            self._sync_process_state(reason=f"CS2 process exited while opening port {host}:{port}")
             if proc.poll() is not None:
                 return False, self._startup_failure_message(stage=f"opening port {host}:{port}")
             try:
@@ -332,6 +396,7 @@ class ServerManager:
             hosts.append(server_ip)
         deadline = time.time() + timeout
         while time.time() < deadline:
+            self._sync_process_state(reason=f"CS2 process exited while accepting RCON on {host}:{port}")
             if proc.poll() is not None:
                 return False, self._startup_failure_message(stage=f"accepting RCON on {host}:{port}")
             for target in hosts:
@@ -350,6 +415,8 @@ class ServerManager:
         attempts = max(env_int("RCON_EARLY_RETRY_ATTEMPTS", 5), 1)
         base_delay = max(env_float("RCON_EARLY_RETRY_BASE_DELAY", 0.5), 0.05)
         for attempt in range(1, attempts + 1):
+            if not self._is_process_alive():
+                raise RuntimeError(self._mark_process_exited(context=f"running post-start RCON '{command}'"))
             try:
                 return run_rcon(command)
             except Exception as exc:
@@ -366,6 +433,47 @@ class ServerManager:
                 )
                 time.sleep(sleep_for)
         raise RuntimeError(f"Failed to run RCON command after retries: {command}")
+
+    def _stabilize_rcon_after_start(self) -> bool:
+        stabilization_seconds = max(env_float("RCON_STABILIZATION_SECONDS", 1.0), 0.0)
+        max_attempts = max(env_int("RCON_STABILIZATION_MAX_ATTEMPTS", 6), 1)
+        retry_delay = max(env_float("RCON_STABILIZATION_RETRY_DELAY", 0.5), 0.05)
+
+        if stabilization_seconds > 0:
+            app.logger.info(
+                "RCON stabilization delay %.2fs before post-start cvars.",
+                stabilization_seconds,
+            )
+            time.sleep(stabilization_seconds)
+
+        for attempt in range(1, max_attempts + 1):
+            if not self._is_process_alive():
+                self._mark_process_exited(context="RCON stabilization")
+                return False
+            try:
+                run_rcon("status")
+                app.logger.info("RCON stabilization probe succeeded on attempt %s/%s.", attempt, max_attempts)
+                return True
+            except Exception as exc:
+                if not is_transient_rcon_error(exc):
+                    self._last_failure_message = f"RCON stabilization failed: {exc}"
+                    app.logger.exception("RCON stabilization failed with non-transient error.")
+                    return False
+                if attempt >= max_attempts:
+                    self._last_failure_message = (
+                        f"RCON stabilization exhausted after {max_attempts} attempts: {exc}"
+                    )
+                    app.logger.error("%s", self._last_failure_message)
+                    return False
+                app.logger.warning(
+                    "Transient RCON stabilization error (attempt %s/%s): %s; retrying in %.2fs",
+                    attempt,
+                    max_attempts,
+                    exc,
+                    retry_delay,
+                )
+                time.sleep(retry_delay)
+        return False
 
     def build_command(self, map_entry: dict, mode: str) -> list[str]:
         exe = cs2_executable()
@@ -429,6 +537,11 @@ class ServerManager:
                 app.logger.info("Start requested but server is already running.")
                 return self.status()
             self._ready = False
+            self._paused = False
+            self._last_failure_message = None
+            self._last_exit_code = None
+            self._last_exit_reason = None
+            self._last_exit_at = None
             if extra_cvars_enabled is not None:
                 self._extra_cvars_enabled = bool(extra_cvars_enabled)
             default_map = self._last_map or os.environ.get("DEFAULT_MAP", "de_dust2")
@@ -439,7 +552,7 @@ class ServerManager:
             command = self.build_command(map_entry, default_mode)
             cwd = Path(os.environ.get("CS2_PATH", "")).expanduser()
             child_env = build_cs2_child_env(cwd, os.environ)
-            app.logger.info("Starting CS2 server process.")
+            app.logger.info("CS2 startup phase=spawn command-prepared")
             app.logger.info("Command: %s", " ".join(command))
             self._process = subprocess.Popen(
                 command,
@@ -449,6 +562,11 @@ class ServerManager:
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
+            )
+            app.logger.info(
+                "CS2 startup phase=spawned pid=%s cwd=%s",
+                self._process.pid,
+                cwd,
             )
             self._start_log_stream()
             server_ip = detect_primary_ip()
@@ -460,6 +578,7 @@ class ServerManager:
                 self._ready = False
                 self._terminate_process()
                 raise RuntimeError(port_error)
+            app.logger.info("CS2 startup phase=port-open host=%s port=%s", server_ip, game_port)
             rcon_host = os.environ.get("RCON_HOST", "127.0.0.1").strip() or "127.0.0.1"
             rcon_port = env_int("RCON_PORT", 27015)
             rcon_password = os.environ.get("RCON_PASSWORD", "").strip()
@@ -470,16 +589,21 @@ class ServerManager:
                 self._ready = False
                 self._terminate_process()
                 raise RuntimeError(rcon_error)
+            app.logger.info("CS2 startup phase=rcon-probe-passed host=%s port=%s", rcon_host, rcon_port)
             self._last_map = map_entry["id"]
             self._last_mode = default_mode
             self._paused = False
-            app.logger.info("Server started, scheduling default cvars.")
+            app.logger.info("CS2 startup phase=post-start-cvars-scheduled ready=false")
             self._apply_default_cvars_async()
             return self.status()
 
     def stop(self) -> dict:
         with self._lock:
+            self._sync_process_state(reason="CS2 process exited before stop")
             self._ready = False
+            self._paused = False
+            if not self._is_process_alive():
+                return self.status()
             run_rcon("quit")
             return self.status()
 
@@ -516,32 +640,60 @@ class ServerManager:
         post_delay = env_int("POST_RESTART_CVAR_DELAY", 2)
 
         def worker():
-            app.logger.info("Applying default cvars.")
+            app.logger.info("CS2 startup phase=post-start-cvars-begin")
             time.sleep(delay)
+            if not self._is_process_alive():
+                self._mark_process_exited(context="starting post-start cvar workflow")
+                return
+            if not self._stabilize_rcon_after_start():
+                self._ready = False
+                return
             cvars = list(DEFAULT_CVARS)
             if self._extra_cvars_enabled:
                 cvars.extend(EXTRA_CVARS)
+            post_start_success = False
             for command in cvars:
+                if not self._is_process_alive():
+                    self._mark_process_exited(context=f"applying cvar '{command}'")
+                    return
                 try:
                     self._run_rcon_with_retry(command)
+                    post_start_success = True
                 except Exception:
                     app.logger.exception("Failed to apply cvar: %s", command)
                     continue
+            if not self._is_process_alive():
+                self._mark_process_exited(context=f"issuing restart command '{RESTART_COMMAND}'")
+                return
             try:
                 self._run_rcon_with_retry(RESTART_COMMAND)
+                post_start_success = True
             except Exception:
                 app.logger.exception("Failed to issue restart command.")
+                self._last_failure_message = "Failed to issue restart command during post-start cvars."
                 return
-            app.logger.info("Applied default cvars and issued restart.")
+            app.logger.info("CS2 startup phase=post-start-cvars-restart-issued")
             time.sleep(post_delay)
             for command in cvars:
+                if not self._is_process_alive():
+                    self._mark_process_exited(context=f"applying post-restart cvar '{command}'")
+                    return
                 try:
                     self._run_rcon_with_retry(command)
+                    post_start_success = True
                 except Exception:
                     app.logger.exception("Failed to apply post-restart cvar: %s", command)
                     continue
-            self._ready = True
-            app.logger.info("Post-restart cvars applied; server ready.")
+            if post_start_success and self._is_process_alive():
+                self._ready = True
+                app.logger.info("CS2 startup phase=ready ready=true")
+            else:
+                self._ready = False
+                if not self._last_failure_message:
+                    self._last_failure_message = (
+                        "Post-start cvar workflow completed without successful RCON operations."
+                    )
+                app.logger.error("CS2 startup phase=ready ready=false reason=%s", self._last_failure_message)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -559,6 +711,7 @@ class ServerManager:
                     self._log_lines.append(line.rstrip())
                     if len(self._log_lines) > 1000:
                         self._log_lines = self._log_lines[-800:]
+            self._sync_process_state(reason="CS2 stdout stream ended")
 
         threading.Thread(target=reader, daemon=True).start()
 
@@ -699,6 +852,16 @@ def parse_bot_controllable(raw: str) -> bool | None:
 @app.get("/api/status")
 def api_status():
     return jsonify({"ok": True, **manager.status()})
+
+
+@app.get("/api/startup-diagnostics")
+def api_startup_diagnostics():
+    limit = max(env_int("STARTUP_LOG_TAIL_LINES", 40), 1)
+    try:
+        limit = int(request.args.get("limit", limit))
+    except ValueError:
+        pass
+    return jsonify({"ok": True, **manager.startup_diagnostics(limit=limit)})
 
 
 @app.get("/api/config")

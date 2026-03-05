@@ -9,6 +9,45 @@ from pathlib import Path
 from unittest import mock
 
 
+class FakeProcess:
+    def __init__(self, code: int | None = None, poll_sequence: list[int | None] | None = None, pid: int = 1234):
+        self._code = code
+        self._poll_sequence = list(poll_sequence or [])
+        self.pid = pid
+        self.stdout = iter(())
+
+    def poll(self):
+        if self._poll_sequence:
+            value = self._poll_sequence.pop(0)
+            if value is not None:
+                self._code = value
+            return value
+        return self._code
+
+    def terminate(self):
+        if self._code is None:
+            self._code = 0
+
+    def wait(self, timeout=None):
+        if self._code is None:
+            self._code = 0
+        return self._code
+
+    def kill(self):
+        if self._code is None:
+            self._code = -9
+
+
+class ImmediateThread:
+    def __init__(self, target=None, daemon=None):
+        self._target = target
+        self.daemon = daemon
+
+    def start(self):
+        if self._target is not None:
+            self._target()
+
+
 def load_cs2_server_module():
     fake_flask = types.ModuleType("flask")
 
@@ -164,6 +203,87 @@ class Cs2ServerLaunchTests(unittest.TestCase):
             is_windows=True,
         )
         self.assertEqual(env["LD_LIBRARY_PATH"], "C:/existing")
+
+    def test_status_reflects_process_exit_promptly(self) -> None:
+        manager = self.server.ServerManager()
+        manager._process = FakeProcess(code=23)
+        manager._ready = True
+        manager._paused = True
+
+        status = manager.status()
+
+        self.assertFalse(status["running"])
+        self.assertFalse(status["ready"])
+        self.assertFalse(status["paused"])
+        self.assertEqual(status["exit_code"], 23)
+        self.assertIsNotNone(status["last_exit_reason"])
+        self.assertIsNotNone(status["last_exit_at"])
+
+    def test_apply_default_cvars_aborts_when_process_dead(self) -> None:
+        manager = self.server.ServerManager()
+        manager._process = FakeProcess(code=42)
+        manager._ready = True
+        manager._log_lines = ["line one", "line two"]
+
+        with mock.patch.object(self.server.threading, "Thread", ImmediateThread):
+            with mock.patch.object(self.server.time, "sleep", lambda *_args, **_kwargs: None):
+                with mock.patch.object(manager, "_run_rcon_with_retry") as run_retry:
+                    manager._apply_default_cvars_async(delay_override=0)
+
+        run_retry.assert_not_called()
+        status = manager.status()
+        self.assertFalse(status["ready"])
+        self.assertEqual(status["exit_code"], 42)
+        self.assertIsNotNone(status["last_failure_message"])
+
+    def test_rcon_stabilization_retries_then_succeeds(self) -> None:
+        manager = self.server.ServerManager()
+        manager._process = FakeProcess(code=None)
+        os.environ["RCON_STABILIZATION_SECONDS"] = "0"
+        os.environ["RCON_STABILIZATION_MAX_ATTEMPTS"] = "3"
+        os.environ["RCON_STABILIZATION_RETRY_DELAY"] = "0"
+
+        calls = {"count": 0}
+
+        def fake_run_rcon(_command):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise ConnectionRefusedError("refused")
+            return "ok"
+
+        with mock.patch.object(self.server, "run_rcon", side_effect=fake_run_rcon):
+            with mock.patch.object(self.server.time, "sleep", lambda *_args, **_kwargs: None):
+                ok = manager._stabilize_rcon_after_start()
+
+        self.assertTrue(ok)
+        self.assertEqual(calls["count"], 2)
+
+    def test_ready_only_after_successful_post_start_operations(self) -> None:
+        manager = self.server.ServerManager()
+        manager._process = FakeProcess(code=None)
+        manager._ready = False
+
+        with mock.patch.object(self.server.threading, "Thread", ImmediateThread):
+            with mock.patch.object(self.server.time, "sleep", lambda *_args, **_kwargs: None):
+                with mock.patch.object(manager, "_stabilize_rcon_after_start", return_value=True):
+                    with mock.patch.object(manager, "_run_rcon_with_retry", return_value="ok"):
+                        manager._apply_default_cvars_async(delay_override=0)
+
+        self.assertTrue(manager.status()["ready"])
+
+    def test_ready_stays_false_when_stabilization_fails(self) -> None:
+        manager = self.server.ServerManager()
+        manager._process = FakeProcess(code=None)
+        manager._ready = False
+
+        with mock.patch.object(self.server.threading, "Thread", ImmediateThread):
+            with mock.patch.object(self.server.time, "sleep", lambda *_args, **_kwargs: None):
+                with mock.patch.object(manager, "_stabilize_rcon_after_start", return_value=False):
+                    with mock.patch.object(manager, "_run_rcon_with_retry") as run_retry:
+                        manager._apply_default_cvars_async(delay_override=0)
+
+        run_retry.assert_not_called()
+        self.assertFalse(manager.status()["ready"])
 
 
 if __name__ == "__main__":

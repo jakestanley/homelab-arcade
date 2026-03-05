@@ -37,6 +37,8 @@ Application config can come from either environment variables or YAML:
 
 `HOMELAB_ARCADE_CONFIG_REQUIRED=1` enables strict config mode: when `HOMELAB_ARCADE_CONFIG_PATH` is set, startup fails fast if the resolved config path is missing or unreadable.
 
+CS2 status diagnostics now expose process lifecycle details (`exit_code`, `last_exit_reason`, `last_exit_at`, `last_failure_message`) so post-start crashes are visible without host shell access.
+
 Host-local game install paths remain external. Keep values such as `CS2_PATH` and `SANDSTORM_PATH` in `/etc/arcade/config.yaml`, an environment file, or another host-managed config source; the package does not install the actual games.
 
 ## Dependencies
@@ -108,6 +110,23 @@ CS2_EXEC_WRAPPER=steam-run
 
 Keep the service `ExecStart` as the direct supervisor executable (`homelab-arcade`); do not wrap the supervisor itself.
 
+RCON post-start stabilization and retry defaults (set in `arcade.env` only when needed):
+
+```sh
+RCON_STABILIZATION_SECONDS=1.0
+RCON_STABILIZATION_MAX_ATTEMPTS=6
+RCON_STABILIZATION_RETRY_DELAY=0.5
+RCON_EARLY_RETRY_ATTEMPTS=5
+RCON_EARLY_RETRY_BASE_DELAY=0.5
+STARTUP_LOG_TAIL_LINES=40
+```
+
+Status and diagnostics endpoints:
+
+- `GET /api/status` now includes `exit_code`, `last_exit_reason`, `last_exit_at`, `last_failure_message`.
+- `GET /api/startup-diagnostics` returns the same status plus `log_tail_lines` for recent CS2 output.
+- `ready=true` is set only after successful post-start RCON operations.
+
 The unit template assumes the executable is available at `/usr/local/bin/homelab-arcade`. If your package manager installs it elsewhere, change `ExecStart=` to that absolute path. Declarative NixOS units typically bypass the checked-in unit template and point directly at the package output path.
 
 Enable and start:
@@ -171,6 +190,10 @@ journalctl -u arcade.service -n 200 --no-pager | grep 'Command: steam-run'
 
 # 6) On Linux, confirm startup no longer reports missing libv8.so/libserver.so
 journalctl -u arcade.service -n 200 --no-pager | grep -E 'libv8\.so|libserver\.so' || true
+
+# 7) Confirm status/diagnostics expose process exit details if CS2 dies post-start
+curl -fsS http://127.0.0.1:${WEB_PORT:-5000}/api/status
+curl -fsS http://127.0.0.1:${WEB_PORT:-5000}/api/startup-diagnostics
 ```
 
 ## Windows NSSM
