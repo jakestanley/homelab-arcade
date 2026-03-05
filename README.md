@@ -10,6 +10,8 @@ This repo supports three operational shapes:
 
 For packaging-oriented Linux hosts, the long-running contract is the installed `homelab-arcade` console script, which dispatches `supervisor:main`. Host-specific env and YAML config stay external, and game installs remain host-managed outside the package.
 
+The supervisor service itself should run directly. Do not wrap the whole service with `steam-run` or a broad FHS wrapper.
+
 ## Runtime Model
 
 The supervisor starts all repo-owned components together:
@@ -32,6 +34,8 @@ Application config can come from either environment variables or YAML:
 - Linux host env template for `systemd`: [`systemd/arcade.env.example`](/Users/jake/git/github.com/jakestanley/homelab-arcade/systemd/arcade.env.example)
 
 `HOMELAB_ARCADE_CONFIG_PATH` is optional. If set, the service reads config from that path instead of repo-local `config.yaml`. That is the recommended Linux host shape so mutable config can live under `/etc/arcade/`.
+
+`HOMELAB_ARCADE_CONFIG_REQUIRED=1` enables strict config mode: when `HOMELAB_ARCADE_CONFIG_PATH` is set, startup fails fast if the resolved config path is missing or unreadable.
 
 Host-local game install paths remain external. Keep values such as `CS2_PATH` and `SANDSTORM_PATH` in `/etc/arcade/config.yaml`, an environment file, or another host-managed config source; the package does not install the actual games.
 
@@ -90,6 +94,20 @@ HOMELAB_ARCADE_CONFIG_PATH=/etc/arcade/config.yaml
 PORTAL_PORT=<host-assigned or infra-assigned value>
 ```
 
+Optional hardening for config correctness:
+
+```sh
+HOMELAB_ARCADE_CONFIG_REQUIRED=1
+```
+
+If CS2 needs a runtime compatibility wrapper on Linux, set only the CS2 child-process wrapper:
+
+```sh
+CS2_EXEC_WRAPPER=steam-run
+```
+
+Keep the service `ExecStart` as the direct supervisor executable (`homelab-arcade`); do not wrap the supervisor itself.
+
 The unit template assumes the executable is available at `/usr/local/bin/homelab-arcade`. If your package manager installs it elsewhere, change `ExecStart=` to that absolute path. Declarative NixOS units typically bypass the checked-in unit template and point directly at the package output path.
 
 Enable and start:
@@ -124,6 +142,35 @@ If you explicitly want to run from a checkout instead of an installed package:
 
 ```sh
 ARCADE_PYTHON=/srv/arcade/.venv/bin/python3 HOMELAB_ARCADE_CONFIG_PATH=/etc/arcade/config.yaml /path/to/homelab-arcade/scripts/up.sh
+```
+
+## Linux Validation
+
+Manual verification steps for packaging-oriented hosts:
+
+```sh
+# 1) Baseline service entrypoint is direct (no steam-run in ExecStart)
+systemctl cat arcade.service | grep '^ExecStart='
+
+# 2) Verify config path model and optional strict mode behavior
+sudo install -o arcade -g arcade -m 0640 /path/to/homelab-arcade/config.example.yaml /etc/arcade/config.yaml
+sudo sed -i.bak '/HOMELAB_ARCADE_CONFIG_REQUIRED/d' /etc/arcade/arcade.env
+echo 'HOMELAB_ARCADE_CONFIG_PATH=/etc/arcade/config.yaml' | sudo tee -a /etc/arcade/arcade.env
+echo 'HOMELAB_ARCADE_CONFIG_REQUIRED=1' | sudo tee -a /etc/arcade/arcade.env
+
+# 3) Optional: wrap only CS2 launch if needed by host runtime compatibility
+echo 'CS2_EXEC_WRAPPER=steam-run' | sudo tee -a /etc/arcade/arcade.env
+
+# 4) Restart and inspect logs/behavior
+sudo systemctl daemon-reload
+sudo systemctl restart arcade.service
+journalctl -u arcade.service -n 120 --no-pager
+
+# 5) With CS2_EXEC_WRAPPER=steam-run, confirm CS2 command starts with wrapper
+journalctl -u arcade.service -n 200 --no-pager | grep 'Command: steam-run'
+
+# 6) On Linux, confirm startup no longer reports missing libv8.so/libserver.so
+journalctl -u arcade.service -n 200 --no-pager | grep -E 'libv8\.so|libserver\.so' || true
 ```
 
 ## Windows NSSM

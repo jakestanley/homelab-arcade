@@ -1,7 +1,11 @@
 import os
+import logging
 from pathlib import Path
 
 CONFIG_PATH_ENV_VAR = "HOMELAB_ARCADE_CONFIG_PATH"
+CONFIG_REQUIRED_ENV_VAR = "HOMELAB_ARCADE_CONFIG_REQUIRED"
+
+logger = logging.getLogger("homelab_arcade.config")
 
 
 def resolve_default_config_path(root_dir: Path) -> Path:
@@ -15,10 +19,39 @@ def resolve_default_config_path(root_dir: Path) -> Path:
     return path
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def load_config(path: Path, game: str | None = None) -> None:
+    configured_raw = os.environ.get(CONFIG_PATH_ENV_VAR, "").strip()
+    strict_required = env_bool(CONFIG_REQUIRED_ENV_VAR, default=False)
+    resolved_path = path.expanduser().resolve(strict=False)
     if not path.exists():
+        if configured_raw:
+            message = f"{CONFIG_PATH_ENV_VAR} resolved to missing path: {resolved_path}"
+            if strict_required:
+                logger.error(message)
+                raise RuntimeError(message)
+            logger.warning(message)
         return
-    raw = path.read_text(encoding="utf-8")
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        message = f"Failed to read config file at {resolved_path}: {exc}"
+        if configured_raw:
+            if strict_required:
+                logger.error(message)
+                raise RuntimeError(message) from exc
+            logger.warning(message)
+            return
+        if strict_required:
+            logger.error(message)
+            raise RuntimeError(message) from exc
+        return
     if not raw.strip():
         return
     try:

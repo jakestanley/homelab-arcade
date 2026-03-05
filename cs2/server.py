@@ -1,4 +1,5 @@
 import csv
+import errno
 import os
 import re
 import shlex
@@ -38,6 +39,13 @@ load_config(DEFAULT_CONFIG_PATH, game="cs2")
 def env_int(name: str, default: int) -> int:
     try:
         return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+def env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
     except ValueError:
         return default
 
@@ -112,6 +120,72 @@ def cs2_executable() -> Path:
     else:
         exe = base / "game" / "bin" / "linuxsteamrt64" / "cs2"
     return exe
+
+
+def resolve_cs2_exec_wrapper_args(raw: str | None) -> list[str]:
+    if raw is None:
+        return []
+    value = raw.strip()
+    if not value:
+        return []
+    try:
+        return shlex.split(value)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid CS2_EXEC_WRAPPER value: {value!r}") from exc
+
+
+def build_cs2_child_env(
+    cs2_path: Path,
+    base_env: dict[str, str] | None = None,
+    *,
+    is_windows: bool | None = None,
+) -> dict[str, str]:
+    env = dict(base_env or os.environ)
+    if is_windows is None:
+        is_windows = os.name == "nt"
+    if is_windows:
+        return env
+
+    required_paths = [
+        str(cs2_path / "game" / "bin" / "linuxsteamrt64"),
+        str(cs2_path / "game" / "csgo" / "bin" / "linuxsteamrt64"),
+    ]
+    existing = env.get("LD_LIBRARY_PATH", "")
+    merged: list[str] = []
+    for entry in required_paths + [part for part in existing.split(":") if part]:
+        if entry and entry not in merged:
+            merged.append(entry)
+    env["LD_LIBRARY_PATH"] = ":".join(merged)
+    return env
+
+
+def is_transient_rcon_error(exc: Exception) -> bool:
+    if isinstance(exc, (ConnectionRefusedError, ConnectionResetError, TimeoutError, BrokenPipeError)):
+        return True
+    if isinstance(exc, OSError):
+        if exc.errno in {
+            errno.ECONNREFUSED,
+            errno.ECONNRESET,
+            errno.ECONNABORTED,
+            errno.ETIMEDOUT,
+            errno.EHOSTUNREACH,
+            errno.ENETUNREACH,
+        }:
+            return True
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in (
+            "connection refused",
+            "connection reset",
+            "connection aborted",
+            "timed out",
+            "timeout",
+            "temporarily unavailable",
+            "network is unreachable",
+            "host is unreachable",
+        )
+    )
 
 
 def run_rcon(command: str) -> str:
@@ -202,10 +276,102 @@ class ServerManager:
         with self._log_lock:
             self._log_lines = []
 
+    def _terminate_process(self, timeout: int = 8) -> None:
+        proc = self._process
+        if proc is None or proc.poll() is not None:
+            return
+        proc.terminate()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=3)
+
+    def _startup_failure_message(self, stage: str, timeout: int | None = None) -> str:
+        proc = self._process
+        return_code = None if proc is None else proc.poll()
+        tail_limit = max(env_int("STARTUP_LOG_TAIL_LINES", 40), 1)
+        tail_lines = self.logs(tail_limit)
+        if timeout is None:
+            reason = f"CS2 process exited during startup while {stage}"
+        else:
+            reason = f"CS2 startup timed out while {stage} after {timeout}s"
+        details = [reason]
+        if return_code is not None:
+            details.append(f"exit code={return_code}")
+        if tail_lines:
+            details.append(f"last {len(tail_lines)} CS2 log lines:\n" + "\n".join(tail_lines))
+        else:
+            details.append("no CS2 log lines captured yet; check /api/logs for buffered output")
+        return "; ".join(details)
+
+    def _wait_for_port_or_exit(self, host: str, port: int, timeout: int) -> tuple[bool, str]:
+        proc = self._process
+        if proc is None:
+            return False, "CS2 process handle is unavailable during startup"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                return False, self._startup_failure_message(stage=f"opening port {host}:{port}")
+            try:
+                with socket.create_connection((host, port), timeout=1):
+                    return True, ""
+            except OSError:
+                time.sleep(0.5)
+        if proc.poll() is not None:
+            return False, self._startup_failure_message(stage=f"opening port {host}:{port}")
+        return False, self._startup_failure_message(stage=f"opening port {host}:{port}", timeout=timeout)
+
+    def _wait_for_rcon_or_exit(self, host: str, port: int, password: str, timeout: int) -> tuple[bool, str]:
+        proc = self._process
+        if proc is None:
+            return False, "CS2 process handle is unavailable while waiting for RCON"
+        server_ip = detect_primary_ip()
+        hosts = [host]
+        if server_ip and server_ip not in hosts:
+            hosts.append(server_ip)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                return False, self._startup_failure_message(stage=f"accepting RCON on {host}:{port}")
+            for target in hosts:
+                try:
+                    with Client(target, port, passwd=password) as client:
+                        client.run("status")
+                    return True, ""
+                except Exception:
+                    continue
+            time.sleep(1)
+        if proc.poll() is not None:
+            return False, self._startup_failure_message(stage=f"accepting RCON on {host}:{port}")
+        return False, self._startup_failure_message(stage=f"accepting RCON on {host}:{port}", timeout=timeout)
+
+    def _run_rcon_with_retry(self, command: str) -> str:
+        attempts = max(env_int("RCON_EARLY_RETRY_ATTEMPTS", 5), 1)
+        base_delay = max(env_float("RCON_EARLY_RETRY_BASE_DELAY", 0.5), 0.05)
+        for attempt in range(1, attempts + 1):
+            try:
+                return run_rcon(command)
+            except Exception as exc:
+                if attempt >= attempts or not is_transient_rcon_error(exc):
+                    raise
+                sleep_for = base_delay * (2 ** (attempt - 1))
+                app.logger.warning(
+                    "Transient RCON error for '%s' (attempt %s/%s): %s; retrying in %.2fs",
+                    command,
+                    attempt,
+                    attempts,
+                    exc,
+                    sleep_for,
+                )
+                time.sleep(sleep_for)
+        raise RuntimeError(f"Failed to run RCON command after retries: {command}")
+
     def build_command(self, map_entry: dict, mode: str) -> list[str]:
         exe = cs2_executable()
         if not exe.exists():
             raise RuntimeError(f"CS2 executable not found at {exe}")
+        wrapper_args = resolve_cs2_exec_wrapper_args(os.environ.get("CS2_EXEC_WRAPPER"))
         server_ip = detect_primary_ip()
         game_port = env_int("GAME_PORT", 27015)
         max_players = env_int("MAX_PLAYERS", 64)
@@ -216,7 +382,7 @@ class ServerManager:
         if not rcon_password:
             raise RuntimeError("RCON_PASSWORD is not set")
 
-        args = [
+        args = wrapper_args + [
             str(exe),
             "-dedicated",
             "-usercon",
@@ -272,11 +438,13 @@ class ServerManager:
                 raise RuntimeError(f"Unknown map '{default_map}'")
             command = self.build_command(map_entry, default_mode)
             cwd = Path(os.environ.get("CS2_PATH", "")).expanduser()
+            child_env = build_cs2_child_env(cwd, os.environ)
             app.logger.info("Starting CS2 server process.")
             app.logger.info("Command: %s", " ".join(command))
             self._process = subprocess.Popen(
                 command,
                 cwd=str(cwd),
+                env=child_env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -287,17 +455,21 @@ class ServerManager:
             game_port = env_int("GAME_PORT", 27015)
             timeout = env_int("SERVER_STARTUP_TIMEOUT", 20)
             app.logger.info("Waiting for server port %s:%s.", server_ip, game_port)
-            if not wait_for_port(server_ip, game_port, timeout):
-                self.stop()
-                raise RuntimeError(f"CS2 server did not open {server_ip}:{game_port} within {timeout}s")
+            port_ready, port_error = self._wait_for_port_or_exit(server_ip, game_port, timeout)
+            if not port_ready:
+                self._ready = False
+                self._terminate_process()
+                raise RuntimeError(port_error)
             rcon_host = os.environ.get("RCON_HOST", "127.0.0.1").strip() or "127.0.0.1"
             rcon_port = env_int("RCON_PORT", 27015)
             rcon_password = os.environ.get("RCON_PASSWORD", "").strip()
             rcon_timeout = env_int("RCON_STARTUP_TIMEOUT", 10)
             app.logger.info("Waiting for RCON %s:%s.", rcon_host, rcon_port)
-            if not wait_for_rcon(rcon_host, rcon_port, rcon_password, rcon_timeout):
-                self.stop()
-                raise RuntimeError(f"RCON did not respond on {rcon_host}:{rcon_port} within {rcon_timeout}s")
+            rcon_ready, rcon_error = self._wait_for_rcon_or_exit(rcon_host, rcon_port, rcon_password, rcon_timeout)
+            if not rcon_ready:
+                self._ready = False
+                self._terminate_process()
+                raise RuntimeError(rcon_error)
             self._last_map = map_entry["id"]
             self._last_mode = default_mode
             self._paused = False
@@ -351,12 +523,12 @@ class ServerManager:
                 cvars.extend(EXTRA_CVARS)
             for command in cvars:
                 try:
-                    run_rcon(command)
+                    self._run_rcon_with_retry(command)
                 except Exception:
                     app.logger.exception("Failed to apply cvar: %s", command)
                     continue
             try:
-                run_rcon(RESTART_COMMAND)
+                self._run_rcon_with_retry(RESTART_COMMAND)
             except Exception:
                 app.logger.exception("Failed to issue restart command.")
                 return
@@ -364,7 +536,7 @@ class ServerManager:
             time.sleep(post_delay)
             for command in cvars:
                 try:
-                    run_rcon(command)
+                    self._run_rcon_with_retry(command)
                 except Exception:
                     app.logger.exception("Failed to apply post-restart cvar: %s", command)
                     continue

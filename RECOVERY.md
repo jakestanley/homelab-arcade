@@ -46,6 +46,7 @@ Ensure `/etc/arcade/config.yaml` is readable by `arcade:arcade`. The env file ma
 2. Restore the Python runtime dependencies if they are managed separately on the host.
 3. Restore `/etc/arcade/arcade.env`.
 4. Restore `/etc/arcade/config.yaml` and verify `HOMELAB_ARCADE_CONFIG_PATH` points to it.
+   If you use strict mode (`HOMELAB_ARCADE_CONFIG_REQUIRED=1`), verify the resolved path is readable before restarting.
 5. Install or restore `/etc/systemd/system/arcade.service`.
 6. Restore any external game binaries, save data, or configs referenced by `CS2_PATH` and `SANDSTORM_PATH`.
 
